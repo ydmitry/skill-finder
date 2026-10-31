@@ -1,0 +1,3 @@
+# One folder per line: scanned like --root (a folder that holds skills, or is itself a skill).
+# Copy to `roots` (machine-local, not committed).
+/path/to/another/repo-with-skills
