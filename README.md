@@ -17,6 +17,29 @@ python3 scripts/find_skills.py --enable NAME --into DIR                 # copy a
 Copy this folder to `~/.claude/skills/skill-finder` (or a project's `.claude/skills/`). To add more skill folders to the search, copy
 `scripts/roots.example` to `scripts/roots`.
 
+## Needs an instruction in your CLAUDE.md
+
+Installing the skill is not enough: Claude will not reach for it by itself. In tests with Claude Haiku and Sonnet (not part of this
+repository), a `SKILL.md` description that says "use at the start of EVERY task" got the skill called in 0 of 232 runs. The models call
+the skill whose topic matches the task (a chart skill for a chart) and never a skill whose job is to look for skills. On a machine with
+many skills Claude Code also drops the description of the ones you never invoke, so the skill is often listed by name alone.
+
+What works better is a standing instruction in the system instructions, next to the work. Put this in your global `~/.claude/CLAUDE.md`
+(or a project's `CLAUDE.md`), and change the path if you installed the skill elsewhere:
+
+```
+## Skills
+Before the first edit of a task, and again when the work turns to a new tool, file type, service or document kind, look the skills up by phrase:
+  python3 ~/.claude/skills/skill-finder/scripts/find_skills.py --phrase "<two or three words, in order>"
+It lists the skills whose SKILL.md contains the phrase, best first. Look up several phrases, each from a different angle: what the work is about; what the finished thing is called; how one goes about it; its shape. Leave proper nouns out.
+Open the best match's SKILL.md before writing anything, and follow it. Search again only if it does not fit. No match, or a LOW CONFIDENCE one, means proceed without a skill. Skip for one-line answers and when the task names its skills.
+```
+
+It costs about 220 tokens in every session. What to expect: in placement tests with Haiku the worker searched every time with this text in
+`CLAUDE.md`, but opened the skill it found in about 9 of 15 runs; the same text in the goal of a delegated run did better (14 of 15). The
+line "open the best match's SKILL.md before writing anything" has not been measured. To see whether it works for you, count in your session
+logs how often `find_skills.py` runs and whether a skill it listed is invoked afterwards.
+
 ## Tests
 
 ```

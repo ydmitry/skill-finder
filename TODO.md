@@ -25,3 +25,12 @@ Ideas to rework, each untested and each needs its own bar written before the run
 The experiments used tasks derived from skills, which gives a ceiling only. Harvest about 60 real tasks (from one's own installed
 skills and past sessions, each with the skill that should fire, blind-judged), then run a retrieval-only eval (no model) and a small live
 Haiku run on them.
+
+## Check the CLAUDE.md instruction in real use
+
+The `SKILL.md` description does not get the skill called: with the old description, with "Use at the start of EVERY task" and without
+"EVERY", 0 of 232 runs on Haiku and Sonnet called the finder (the experiments are not in this repository), so the README asks for a
+standing instruction in `CLAUDE.md`. That instruction is not measured on Sonnet, and the line "open the best match's SKILL.md before
+writing anything" is not measured at all. After a couple of weeks of use, count in the session logs how often `find_skills.py` runs and
+how often a skill it listed is invoked afterwards. If the finder still hardly runs, the instruction belongs in the goal text of delegated runs.
+Side effect to watch: subagents read the same `CLAUDE.md`, so each one now looks the skills up before its first edit.
