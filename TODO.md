@@ -34,8 +34,17 @@ standing instruction in `CLAUDE.md`. On Sonnet the instruction got the finder ru
 opened a skill from the list in 6 of 8 (n = 2 per task; on 3 of the 4 tasks it opens the same skill without the finder, so the lookup
 changed the outcome on one). The line "open the best match's SKILL.md before writing anything" is not tested apart from the rest. After a few weeks of use, count in the session logs how often `find_skills.py` runs and
 how often a skill it listed is invoked afterwards. If the finder still hardly runs, the instruction belongs in the goal text of delegated runs.
-Side effect: subagents read the same `CLAUDE.md`, so each one looks the skills up before its first edit: 8 of 8 delegated test tasks, about
-three lookups each, and they open the same skills as the top-level session does.
+Delegated workers (intended): subagents read the same `CLAUDE.md`, so each one looks the skills up before its first edit: 8 of 8 delegated
+test tasks, about three lookups each, and they open the same skills as the top-level session does. A coordinator that only hands the task
+over looks nothing up (0 of 8). That keeps the lookup output (about 20 to 60 lines each) out of the main conversation, at about $0.08 more
+per delegated run; the coordinator does not learn which skill the worker opened unless the worker says so.
+
+## Trivial edits start a lookup
+
+The block exempts one-line answers and tasks that name their skills, not small edits. "Rename `x` to `count` in this file" ran the finder
+before the first edit in 14 of 15 Sonnet runs (no skill opened, 0.02 to 0.08 USD a run); a one-line question and a thanks ran it in 0 of 15
+each. Not changed: an exemption such as "renames and other trivial edits" could also switch the lookup off for small edits where a skill
+matters, so it would need the same test as the original instruction (the should-fire tasks must still fire 8 of 8) before it goes in.
 
 ## Skills bundled inside Claude Code
 

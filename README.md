@@ -39,10 +39,17 @@ It costs about 220 tokens in every session. What to expect: with this text in th
 first edit in 8 of 8 test tasks and in none of 4 one-line questions. With the lookup allowed it then opened a skill from the list in 6 of 8;
 in 4 of those it was a skill it opens without the finder, and for the task whose best skill is not in its own skill list (a colour theme)
 it opened the finder's pick in 2 of 2. Subagents read the same file and did the same in 8 of 8 delegated tasks, at about three lookups each
-before their first edit. In placement tests with Haiku the worker searched every time with this text in
+before their first edit; a coordinator that only handed the task over looked nothing up (0 of 8), so those lookups stay out of the main
+conversation. In placement tests with Haiku the worker searched every time with this text in
 `CLAUDE.md`, but opened the skill it found in about 9 of 15 runs; the same text in the goal of a delegated run did better (14 of 15). The
 line "open the best match's SKILL.md before writing anything" has not been measured. To see whether it works for you, count in your session
 logs how often `find_skills.py` runs and whether a skill it listed is invoked afterwards.
+
+Skills the session lists by name alone are where it matters most. Five such skills, five runs each, Sonnet: with this text it opened the
+right skill in 25 of 25 runs; with `CLAUDE.md` loading switched off, in 20 of 25, because four of the five names say what the skill does and
+the model calls the skill by its name. The one whose name says nothing about its use went from 0 of 5 to 5 of 5. For skills that keep their
+description, the two arms opened the right one in 23 and 25 of 25 runs. That is five skills and one model, with requests written from each
+skill's own text, so read it as a direction, not a rate. The finder earns its place where a name is not enough.
 
 ## Tests
 
