@@ -30,7 +30,8 @@ Haiku run on them.
 
 The `SKILL.md` description does not get the skill called: with the old description, with "Use at the start of EVERY task" and without
 "EVERY", 0 of 232 runs on Haiku and Sonnet called the finder (the experiments are not in this repository), so the README asks for a
-standing instruction in `CLAUDE.md`. That instruction is not measured on Sonnet, and the line "open the best match's SKILL.md before
-writing anything" is not measured at all. After a couple of weeks of use, count in the session logs how often `find_skills.py` runs and
+standing instruction in `CLAUDE.md`. On Sonnet the instruction got the finder run before the first edit in 8 of 8 test tasks and in 0 of 4 one-line questions, in a sandbox
+that denied the command; whether the model then opens the skill, and the line "open the best match's SKILL.md before writing anything", is
+not measured (it needs a harness mode that allows only the `find_skills.py` command). After a few weeks of use, count in the session logs how often `find_skills.py` runs and
 how often a skill it listed is invoked afterwards. If the finder still hardly runs, the instruction belongs in the goal text of delegated runs.
 Side effect to watch: subagents read the same `CLAUDE.md`, so each one now looks the skills up before its first edit.
