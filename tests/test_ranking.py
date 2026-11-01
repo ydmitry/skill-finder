@@ -234,6 +234,49 @@ class DefaultRoots(unittest.TestCase):
             self.assertNotIn("moon-skill", out)
 
 
+class SameSkillAgain(unittest.TestCase):
+    """The same skill in two places (an older cached version, a user copy of a plugin skill) is one hit that names the other place;
+    two different skills that share a name stay two."""
+
+    def make(self, root, name, description, body="Steps."):
+        d = Path(root) / name
+        d.mkdir(parents=True)
+        (d / "SKILL.md").write_text(f"---\nname: {name}\ndescription: {description}\n---\n\n# {name}\n\n{body}\n")
+
+    def run_phrase(self, *roots, phrase="crossing roads"):
+        cmd = [sys.executable, str(FINDER), "--phrase", phrase, "--json", "--limit", "40"]
+        for r in roots:
+            cmd += ["--only", str(r)]
+        out = subprocess.run(cmd, capture_output=True, text=True)
+        assert out.returncode == 0, out.stderr
+        return json.loads(out.stdout)
+
+    def test_two_copies_with_one_description_are_one_hit_that_names_the_other(self):
+        with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
+            self.make(a, "road-skill", "Use for crossing roads safely.", "Look both ways. Version one.")
+            self.make(b, "road-skill", "Use for crossing roads safely.", "Look both ways, twice. Version two.")
+            res = self.run_phrase(a, b)
+            self.assertEqual([c["name"] for c in res["candidates"]], ["road-skill"])
+            self.assertEqual(res["matched"], 1)
+            self.assertEqual(len(res["candidates"][0]["also"]), 1)
+
+    def test_same_name_but_another_description_stays_a_separate_skill(self):
+        with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
+            self.make(a, "configure", "Set up the telegram bot for crossing roads.")
+            self.make(b, "configure", "Set up the discord bot for crossing roads.")
+            res = self.run_phrase(a, b)
+            self.assertEqual([c["name"] for c in res["candidates"]], ["configure", "configure"])
+
+    def test_the_text_output_says_where_else_the_skill_is(self):
+        with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
+            self.make(a, "road-skill", "Use for crossing roads safely.", "Version one.")
+            self.make(b, "road-skill", "Use for crossing roads safely.", "Version two.")
+            cmd = [sys.executable, str(FINDER), "--phrase", "crossing roads", "--only", str(a), "--only", str(b)]
+            out = subprocess.run(cmd, capture_output=True, text=True).stdout
+            self.assertIn("1 skill(s) contain it", out)
+            self.assertIn("also at: only ", out)
+
+
 STUB = """import json, os, sys
 open(os.environ["STUB_COUNT"], "a").write("x")
 sys.stdin.read()

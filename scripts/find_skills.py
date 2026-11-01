@@ -146,7 +146,22 @@ def collect(extra_roots, only=()):
         h = hashlib.sha1((e["dir"] / "SKILL.md").read_bytes()).hexdigest()
         if h in by_hash: by_hash[h]["also"].append(f"{e['source']} [{e['status']}]"); continue
         e["also"] = []; by_hash[h] = e; out.append(e)
-    return out
+    # The same skill again with other text (an older cached version, a copy in the second config folder, a user copy of a plugin
+    # skill): same name and either the same plugin or the same description. The best-ranked copy stays and names the rest.
+    # Two different skills that merely share a name (a "configure" in each of three plugins) stay apart.
+    def words(s): return " ".join(s.split()).lower()
+    kept, merged = {}, []
+    for e in out:
+        twin = next((k for k in kept.get(e["name"], []) if k["source"] == e["source"] or (words(e["description"]) and words(k["description"]) == words(e["description"]))), None)
+        if twin:
+            here = f"{twin['source']} [{twin['status']}]"
+            for place in [f"{e['source']} [{e['status']}]", *e["also"]]:
+                if place != here and place not in twin["also"]: twin["also"].append(place)
+            continue
+        kept.setdefault(e["name"], []).append(e); merged.append(e)
+    for e in merged:                           # name only the other places: not the hit's own label again (a copy in the second config folder)
+        e["also"] = [p for p in dict.fromkeys(e["also"]) if p != f"{e['source']} [{e['status']}]"]
+    return merged
 
 def terms_of(task):
     words = [w for w in re.findall(r"[a-z0-9][a-z0-9+#._-]+", task.lower()) if w not in STOP]
@@ -375,7 +390,7 @@ def phrase_search(entries, phrases, limit, as_json, for_text=""):
     hits.sort(key=lambda h: h[0])
     shown = hits[:limit]
     rows = [dict(name=e["name"], status=e["status"], source=e["source"], path=str(e["dir"] / "SKILL.md"), phrases=found,
-                 description=" ".join(e["description"].split())[:110], match=f"{line[0]}: {line[1]}" if line else "")
+                 description=" ".join(e["description"].split())[:110], match=f"{line[0]}: {line[1]}" if line else "", also=e["also"])
             for _, e, found, line, _ in shown]
     counts, nearest = near_misses(entries, phrases) if not hits else ({}, [])
     best = best_match(hits, for_text) if hits else None
@@ -403,6 +418,7 @@ def phrase_search(entries, phrases, limit, as_json, for_text=""):
         print(f"{i}. {r['name']}  [{r['status']}]  {r['path']}")
         print(f"   {r['description']}")
         if r["match"]: print(f"   :{r['match']}")
+        if r["also"]: print(f"   also at: {'; '.join(r['also'][:2])}" + (f" (+{len(r['also']) - 2} more)" if len(r["also"]) > 2 else ""))
     print_best(best, for_text)
 
 def enable(entries, names, into, source):
