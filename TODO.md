@@ -34,7 +34,8 @@ standing instruction in `CLAUDE.md`. On Sonnet the instruction got the finder ru
 opened a skill from the list in 6 of 8 (n = 2 per task; on 3 of the 4 tasks it opens the same skill without the finder, so the lookup
 changed the outcome on one). The line "open the best match's SKILL.md before writing anything" is not tested apart from the rest. After a few weeks of use, count in the session logs how often `find_skills.py` runs and
 how often a skill it listed is invoked afterwards. If the finder still hardly runs, the instruction belongs in the goal text of delegated runs.
-Side effect to watch: subagents read the same `CLAUDE.md`, so each one now looks the skills up before its first edit.
+Side effect: subagents read the same `CLAUDE.md`, so each one looks the skills up before its first edit: 8 of 8 delegated test tasks, about
+three lookups each, and they open the same skills as the top-level session does.
 
 ## Skills bundled inside Claude Code
 
