@@ -46,10 +46,9 @@ them) and, if so, add them to the inventory as "bundled, not on disk".
 
 ## What the block says to do when a lookup finds nothing
 
-Recall test (48 skills, not in this repository): 62% of the targets are in the top 3 of a real match, but when a lookup has no
-exact match the finder prints "Nearest by words", and counting those the target is the first entry of some lookup for 77% and in the
-first three for 89%. The block says "No match ... means proceed without a skill", so that answer is probably thrown away; in 12 earlier
-runs with a zero-hit lookup the model opened a nearest skill twice (both right). For requests no skill fits, the nearest lists are junk,
-so any change to the wording has to keep the "open one only if its description fits" judgement. Needs a behaviour test of the block
-wording (current vs "the first nearest entry may be opened if its description fits"), on requests where the target is the first nearest
-entry and on requests no skill fits; `--append-system-prompt` can carry the variant without touching `CLAUDE.md`.
+Tested, nothing to change. The offline recall test (not in this repository) suggested the block's "No match ... proceed without
+a skill" discards the finder's "nearest by words" list, which holds the target first for 77% of requests. A live A/B (Sonnet, 9 requests
+where the target is the first nearest entry, 12 where nothing fits) showed the block as it is already works: 8 of 9 targets opened
+with and without an amendment that allows opening the first nearest entry, no skill opened when nothing fits. The models search again
+and judge the nearest list's descriptions themselves. The one target neither arm found (a tracking-parity skill) never reached the
+output: that is a vocabulary gap, the thing to look at if recall needs work.
