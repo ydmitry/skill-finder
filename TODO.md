@@ -30,8 +30,15 @@ Haiku run on them.
 
 The `SKILL.md` description does not get the skill called: with the old description, with "Use at the start of EVERY task" and without
 "EVERY", 0 of 232 runs on Haiku and Sonnet called the finder (the experiments are not in this repository), so the README asks for a
-standing instruction in `CLAUDE.md`. On Sonnet the instruction got the finder run before the first edit in 8 of 8 test tasks and in 0 of 4 one-line questions, in a sandbox
-that denied the command; whether the model then opens the skill, and the line "open the best match's SKILL.md before writing anything", is
-not measured (it needs a harness mode that allows only the `find_skills.py` command). After a few weeks of use, count in the session logs how often `find_skills.py` runs and
+standing instruction in `CLAUDE.md`. On Sonnet the instruction got the finder run before the first edit in 8 of 8 test tasks and in 0 of 4 one-line questions, and the model then
+opened a skill from the list in 6 of 8 (n = 2 per task; on 3 of the 4 tasks it opens the same skill without the finder, so the lookup
+changed the outcome on one). The line "open the best match's SKILL.md before writing anything" is not tested apart from the rest. After a few weeks of use, count in the session logs how often `find_skills.py` runs and
 how often a skill it listed is invoked afterwards. If the finder still hardly runs, the instruction belongs in the goal text of delegated runs.
 Side effect to watch: subagents read the same `CLAUDE.md`, so each one now looks the skills up before its first edit.
+
+## Skills bundled inside Claude Code
+
+The finder cannot see them: `dataviz`, for example, has no `SKILL.md` on disk (Claude Code extracts it to a temp folder when it is invoked),
+so `--phrase chart --limit 60` finds nothing for it. A model sees such a skill in its own listing, so the gap hurts only when the listing
+shows it as a bare name or not at all. Find out whether there is a way to list the bundled skills (the init event of `claude -p` names
+them) and, if so, add them to the inventory as "bundled, not on disk".

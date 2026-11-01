@@ -36,8 +36,9 @@ Open the best match's SKILL.md before writing anything, and follow it. Search ag
 ```
 
 It costs about 220 tokens in every session. What to expect: with this text in the global `CLAUDE.md`, Sonnet ran the finder before its
-first edit in 8 of 8 test tasks and in none of 4 one-line questions (the test sandbox denied the command, so whether it then opens the skill
-it finds was not measured). In placement tests with Haiku the worker searched every time with this text in
+first edit in 8 of 8 test tasks and in none of 4 one-line questions. With the lookup allowed it then opened a skill from the list in 6 of 8;
+in 4 of those it was a skill it opens without the finder, and for the task whose best skill is not in its own skill list (a colour theme)
+it opened the finder's pick in 2 of 2. In placement tests with Haiku the worker searched every time with this text in
 `CLAUDE.md`, but opened the skill it found in about 9 of 15 runs; the same text in the goal of a delegated run did better (14 of 15). The
 line "open the best match's SKILL.md before writing anything" has not been measured. To see whether it works for you, count in your session
 logs how often `find_skills.py` runs and whether a skill it listed is invoked afterwards.
