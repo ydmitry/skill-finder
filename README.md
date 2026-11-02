@@ -46,12 +46,18 @@ line "open the best match's SKILL.md before writing anything" has not been measu
 logs how often `find_skills.py` runs and whether a skill it listed is invoked afterwards.
 
 Skills the session lists by name alone: three such skills, five Sonnet runs each, with and without this text. The model opened the right
-skill in all fifteen runs either way, because the names say what the skill does and it calls the skill by its name. So this test shows no
-gain from the finder for readable names, and no harm. Name-only skills with names that say nothing are untested (the one tried needed an
-API key that did not work and was dropped). For skills that keep their description, the two arms opened the right one in 23 and 25 of 25
-runs, a difference of one task (3 of 5 to 5 of 5). The gain that is measured is for a skill the model's own list lacks entirely (the colour
-theme, above). Three skills and one model, with requests written from each skill's own text, and the model often needed several phrases
-(about one phrase in three listed the skill) to get there: a direction, not a rate.
+skill in all fifteen runs either way, because the names say what the skill does and it calls the skill by its name. So that test shows no
+gain from the finder for readable names, and no harm. Name-only skills whose names say nothing are untested (the one tried needed an API key
+that did not work and was dropped). For skills that keep their description, the two arms opened the right one in 23 and 25 of 25 runs, a
+difference of one task (3 of 5 to 5 of 5).
+
+Skills the session cannot see at all are the finder's job. Ten skills from public repos that were not installed, requests written without any
+word of the skill's name or description (rejected by a check, then confirmed blind by a second model that picked the right skill first for 8 of
+10): without this text Sonnet ran the finder in none of 30 runs and opened none of those skills. With it, it ran the finder in all 50 runs,
+had the target in a list in 78% of them, opened the exact skill in 68% and some skill it could not otherwise see in 88%. Seven of the ten skills
+were opened in four or five of five runs; two of the misses were requests that fit another unseen skill as well, one was a short skill whose
+words the request did not share. Ten skills, one model, the first turn only (nothing is written, so whether the skill was followed is not
+measured), and requests written by a model that had read each skill: a direction, not a rate.
 
 ## Tests
 
