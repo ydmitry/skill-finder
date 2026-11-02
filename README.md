@@ -45,12 +45,13 @@ conversation. In placement tests with Haiku the worker searched every time with 
 line "open the best match's SKILL.md before writing anything" has not been measured. To see whether it works for you, count in your session
 logs how often `find_skills.py` runs and whether a skill it listed is invoked afterwards.
 
-Skills the session lists by name alone are where it matters most. Five such skills, five Sonnet runs each, with and without this text:
-for four of them the model opened the right skill in all five runs either way, because the name says what the skill does and the model
-calls the skill by its name. The fifth, whose name says nothing about its use, went from 0 of 5 to 5 of 5. For skills that keep their
-description, the two arms opened the right one in 23 and 25 of 25 runs. So the finder helps where a name is not enough, and that is one
-skill in this test: five skills, one model, requests written from each skill's own text, and the model often needed several phrases (about
-one phrase in three listed the skill) before it got there. Read it as a direction, not a rate.
+Skills the session lists by name alone: three such skills, five Sonnet runs each, with and without this text. The model opened the right
+skill in all fifteen runs either way, because the names say what the skill does and it calls the skill by its name. So this test shows no
+gain from the finder for readable names, and no harm. Name-only skills with names that say nothing are untested (the one tried needed an
+API key that did not work and was dropped). For skills that keep their description, the two arms opened the right one in 23 and 25 of 25
+runs, a difference of one task (3 of 5 to 5 of 5). The gain that is measured is for a skill the model's own list lacks entirely (the colour
+theme, above). Three skills and one model, with requests written from each skill's own text, and the model often needed several phrases
+(about one phrase in three listed the skill) to get there: a direction, not a rate.
 
 ## Tests
 
