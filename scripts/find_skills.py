@@ -46,6 +46,8 @@ MARGIN = 1.3             # the top hit counts as clear when it scores this much 
 SENTENCE_MAX = 120       # --toc: a skill's row holds the description's first sentence, cut at a word beyond this
 ROW_MAX = 160            # ... and a names, sentence or headers row is at most this long
 ON = {"user skill", "plugin enabled", "project skill", "folder skill", "extra root"}     # statuses Claude Code loads; any other row is [off]
+TOC_FILES = 60           # --toc <skill> --kind files lists at most this many files, then says how many more
+FILES_SKIP = {".git", "node_modules", "__pycache__", ".venv"}       # a skill's own files never come from these or any dot folder
 NOT_END = {"e.g", "i.e", "vs", "etc", "cf"}
 
 def default_roots():
@@ -307,6 +309,25 @@ def headers_of(path):
         if m and m.group(2).strip(): out.append((i + 1, len(m.group(1)), m.group(2).strip()))
     return out
 
+def files_of(sdir, limit=TOC_FILES):
+    """The files of one skill (its resolved folder): SKILL.md first, then sorted; (rows of (relative path, bytes, first line of a .md or
+    .txt), total number of files). Not SKIP_DIRS, which only prunes the search for skills; dot folders and files are left out."""
+    real = sdir.resolve()
+    rels = []
+    for dp, dn, fn in os.walk(real):
+        dn[:] = [d for d in dn if d not in FILES_SKIP and not d.startswith(".")]
+        rels += [Path(dp, f).relative_to(real) for f in fn if f not in FILES_SKIP and not f.startswith(".") and Path(dp, f).is_file()]
+    rels.sort(key=lambda r: (r != Path("SKILL.md"), r.parts))
+    rows = []
+    for r in rels[:limit]:
+        first = ""
+        if r.suffix in (".md", ".txt"):
+            text = read_small(real / r)
+            fm = re.match(r"---\s*\n.*?\n---[ \t]*\n?", text, re.S)
+            first = next((l.strip().lstrip("# ") for l in (text[fm.end():] if fm else text).splitlines() if l.strip()), "")[:90]
+        rows.append((r, (real / r).stat().st_size, first))
+    return rows, len(rels)
+
 def toc_row(e, kind, heads=None):
     tail = (" [off]" if off(e) else "") + (f" (also at {len(e['also'])})" if e["also"] else "")
     name = e["name"]
@@ -329,17 +350,26 @@ def toc_entry(e, kind):
     return out
 
 def toc_skill(e, entries, kind, as_json):
-    """One skill: its header outline with line numbers (kind headers)."""
+    """One skill: its header outline with line numbers (kind headers), its files (kind files), or its one row."""
     path = e["dir"] / "SKILL.md"
     size = path.stat().st_size
-    sentence = first_sentence(e["description"])
-    heads = headers_of(path)
+    rows, total = files_of(e["dir"], TOC_FILES if kind == "files" else 0)
     if as_json:
         t = dict(scope=e["name"], level="skill", kind=kind, scanned=len(entries), **toc_entry(e, kind), bytes=size)
-        if kind == "headers": t["headers"] = None if heads is None else [dict(line=n, level=lv, text=tx) for n, lv, tx in heads]
+        if kind == "headers":
+            heads = headers_of(path)
+            t["headers"] = None if heads is None else [dict(line=n, level=lv, text=tx) for n, lv, tx in heads]
+        if kind == "files": t.update(files=[dict(path=str(r), bytes=b, first=f) for r, b, f in rows], more_files=total - len(rows))
         print(json.dumps(dict(toc=t), indent=1)); return
-    print(f"{e['name']}  {path}  ({size:,} bytes)")
-    print(sentence or "(no description)")
+    if kind == "files":
+        print(f"{e['name']}  {path}  ({total} file{'s' * (total != 1)})")
+        for r, b, f in rows: print(f"{r}  ({b})" + (f"  {f}" if f else ""))
+        if total > len(rows): print(f"+{total - len(rows)} more files")
+        return
+    others = total - 1
+    print(f"{e['name']}  {path}  ({size:,} bytes" + (f"; {others} more files: --kind files" if others > 0 else "") + ")")
+    print(first_sentence(e["description"]) or "(no description)")
+    heads = headers_of(path)
     if heads is None: print("(file too large for an outline)")
     elif not heads: print(f"no headers; {len(read_small(path).splitlines())} lines")
     for n, lv, tx in heads or []: print(f"{n:>4}: {'#' * lv} {tx}")
@@ -349,8 +379,8 @@ def toc(entries, what, kind, as_json):
     """--toc: a table of contents. Every skill or one folder: a row each; one skill: its outline or files. No model call."""
     level, es = toc_scope(entries, what)
     kind = kind or ("headers" if level == "skill" else "sentence")
-    if kind == "files": sys.exit("--kind files lands with Task 3")
-    if level == "skill" and (as_json or kind == "headers"): return toc_skill(es[0], entries, kind, as_json)
+    if kind == "files" and level != "skill": sys.exit("--kind files needs one skill: --toc <skill>")
+    if level == "skill" and (as_json or kind in ("headers", "files")): return toc_skill(es[0], entries, kind, as_json)
     groups = {}
     for e in es: groups.setdefault(group_of(e), []).append(e)
     groups = [(g, sorted(v, key=lambda e: e["name"])) for g, v in groups.items()]

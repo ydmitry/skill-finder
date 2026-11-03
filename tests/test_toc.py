@@ -116,6 +116,84 @@ class Outline(unittest.TestCase):
             self.assertTrue(row.endswith("…"))
 
 
+class Files(unittest.TestCase):
+    def skill_with(self, tmp, name, files):
+        d = make(tmp, name, "Has files.")
+        for rel, text in files.items():
+            (d / rel).parent.mkdir(parents=True, exist_ok=True)
+            (d / rel).write_text(text)
+        return d
+
+    def files_json(self, tmp, name):
+        code, out, err = toc(name, "--kind", "files", "--json", folder=tmp)
+        self.assertEqual(code, 0, err)
+        return json.loads(out)["toc"]
+
+    def test_files_kind_lists_skill_md_first_then_sorted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.skill_with(tmp, "filed", {"scripts/x.py": "print(1)\n", "references/b.md": "# Bee\nmore\n", "references/a.md": "\n\n## Ay thing\n"})
+            t = self.files_json(tmp, "filed")
+            self.assertEqual([f["path"] for f in t["files"]], ["SKILL.md", "references/a.md", "references/b.md", "scripts/x.py"])
+            by = {f["path"]: f for f in t["files"]}
+            self.assertEqual((by["references/a.md"]["first"], by["references/b.md"]["first"], by["scripts/x.py"]["first"]), ("Ay thing", "Bee", ""))
+            self.assertEqual(by["SKILL.md"]["first"], "filed")                  # the first line after the frontmatter, not "---"
+            self.assertEqual(by["scripts/x.py"]["bytes"], 9)
+            self.assertEqual((t["more_files"], t["kind"], t["level"]), (0, "files", "skill"))
+            _, out, _ = toc("filed", "--kind", "files", folder=tmp)
+            rows = out.splitlines()
+            self.assertEqual(rows[2], "references/a.md  (14)  Ay thing")
+            self.assertEqual(rows[4], "scripts/x.py  (9)")
+            self.assertTrue(rows[0].startswith("filed  ") and rows[0].endswith("(4 files)"), rows[0])
+
+    def test_files_over_the_cap_say_more(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.skill_with(tmp, "many", {f"data/f{i:02d}.txt": f"line {i}\n" for i in range(69)})            # 69 + SKILL.md = 70
+            t = self.files_json(tmp, "many")
+            self.assertEqual((len(t["files"]), t["more_files"]), (60, 10))
+            self.assertEqual(t["files"][0]["path"], "SKILL.md")
+            _, out, _ = toc("many", "--kind", "files", folder=tmp)
+            self.assertEqual(len(out.splitlines()), 1 + 60 + 1)
+            self.assertTrue(out.rstrip().endswith("+10 more files"), out[-80:])
+
+    def test_symlinked_skill_lists_the_target_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            real = self.skill_with(Path(tmp) / "elsewhere", "linked", {"references/r.md": "# R\n", "run.sh": "echo\n"})
+            (Path(tmp) / "with-link").mkdir()
+            (Path(tmp) / "with-link" / "linked").symlink_to(real, target_is_directory=True)
+            self.skill_with(Path(tmp) / "with-copy", "linked", {"references/r.md": "# R\n", "run.sh": "echo\n"})
+            lists = []
+            for root in ("with-link", "with-copy"):
+                code, out, err = toc("linked", "--kind", "files", "--json", folder=Path(tmp) / root)
+                self.assertEqual(code, 0, err)
+                lists.append(json.loads(out)["toc"]["files"])
+            self.assertEqual([f["path"] for f in lists[0]], ["SKILL.md", "references/r.md", "run.sh"])
+            self.assertEqual(lists[0], lists[1])
+
+    def test_files_skip_rule(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.skill_with(tmp, "skipper", {"node_modules/x.js": "1", ".cache/y": "2", "__pycache__/z.pyc": "3", ".venv/w": "4", ".git/config": "5",
+                                             ".hidden": "6", "tests/t.py": "7", "fixtures/f.txt": "8"})
+            paths = [f["path"] for f in self.files_json(tmp, "skipper")["files"]]
+            self.assertEqual(paths, ["SKILL.md", "fixtures/f.txt", "tests/t.py"])
+
+    def test_files_kind_for_a_table_exits_1(self):
+        code, out, err = toc("--kind", "files")
+        self.assertEqual((code, out), (1, ""))
+        self.assertIn("--kind files needs one skill: --toc <skill>", err)
+        code, _, err = toc("skills/", "--kind", "files")
+        self.assertEqual(code, 1)
+        self.assertIn("--kind files needs one skill", err)
+
+    def test_head_line_counts_other_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.skill_with(tmp, "three", {"a.md": "# A\n", "b.md": "# B\n"})
+            _, out, _ = toc("three", folder=tmp)
+            self.assertIn("2 more files: --kind files)", out.splitlines()[0])
+            self.skill_with(tmp, "one", {})
+            _, out, _ = toc("one", folder=tmp)
+            self.assertNotIn("more files", out.splitlines()[0])
+
+
 class Tables(unittest.TestCase):
     def skill_lines(self, text):
         return [ln for ln in text.splitlines() if " — " in ln and not ln.startswith(("table of contents", "Narrow"))]
@@ -258,11 +336,6 @@ class Tables(unittest.TestCase):
         code, _, err = run("--only", str(FIXTURES), "--kind", "names")
         self.assertEqual(code, 1)
         self.assertIn("--kind needs --toc", err)
-
-    def test_files_kind_is_refused_until_its_task(self):
-        code, _, err = toc("--kind", "files")
-        self.assertEqual(code, 1)
-        self.assertIn("--kind files", err)
 
     def test_json_shape(self):
         code, out, _ = toc("--json")
