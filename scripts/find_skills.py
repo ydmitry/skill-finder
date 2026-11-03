@@ -4,6 +4,8 @@
   find_skills.py --task "explain this PR as a page" [--top 8] [--root DIR ...] [--json]
   find_skills.py --phrase "implementation plan" [--phrase "task breakdown" ...] [--limit 40] [--json]
   find_skills.py --list
+  find_skills.py --toc [WHAT] [--kind names|sentence|description|headers|files] [--json]   # tables of contents: every skill, one folder, one skill
+  find_skills.py --phrase "<words>" --toc       # the hits as sections, one sentence each, no best match
   find_skills.py --only DIR --task "..."        # scan DIR/<name>/SKILL.md alone (tests, fixtures); default scans the machine
   find_skills.py --enable NAME [NAME ...] --into DIR [--source TEXT]   # copy skills into DIR/.claude/skills (this run only)
 A file `roots` beside this script (or $SKILL_FINDER_ROOTS) lists more folders to scan, one per line, like --root.

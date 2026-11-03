@@ -9,6 +9,8 @@ and their reference files, and can copy chosen skills into a run folder so a fre
 python3 scripts/find_skills.py --task "heap snapshot memory leak"        # keyword ranking
 python3 scripts/find_skills.py --phrase "implementation plan"           # exact phrase in the whole SKILL.md of every skill
 python3 scripts/find_skills.py --list                                   # the whole inventory
+python3 scripts/find_skills.py --toc [FOLDER|SKILL] [--kind names|sentence|description|headers|files]   # tables of contents
+python3 scripts/find_skills.py --phrase "..." --toc   # the hits as sections
 python3 scripts/find_skills.py --enable NAME --into DIR                 # copy a skill into DIR/.claude/skills for one run
 ```
 

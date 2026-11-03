@@ -39,6 +39,8 @@ first. It says how many skills match: over 40, use a longer phrase. When none ma
 word of the phrase (a word held by none is not how any skill says it) and lists the 10 skills nearest by words, the first
 3 with their descriptions: use fewer words or the other form of the word, or open one of them if it fits. `--phrase` and `--task` are not combined.
 
+**Browse instead of guessing words.** `--toc` prints every skill as `name — first sentence` grouped by folder (roughly 30 tokens a skill, 6 with `--kind names`); `--toc <folder>` one group; `--toc <skill>` that skill's header outline with line numbers, `--kind files` its files. `--phrase "<words>" --toc` prints the hits as sections, one sentence each, and no best match: read the sections and open the one that fits. Use the table when phrases keep missing or when the skills' own words are unknown.
+
 Both scan user skills, project skills (`.claude/skills` up from the cwd) and every plugin's skills in each
 config dir (`~/.claude`, and `$CLAUDE_CONFIG_DIR` when set): enabled plugins, DISABLED plugins, installed-but-unlisted ones,
 and marketplace folders of plugins never installed. Each hit shows its state, source, path, the whole description (cut at 1,500 characters, and it says so), the
