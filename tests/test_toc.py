@@ -84,6 +84,14 @@ class Outline(unittest.TestCase):
             _, out, _ = toc("fenced", "--json", folder=tmp)
             self.assertEqual(json.loads(out)["toc"]["headers"], [{"line": 13, "level": 2, "text": "Real"}])
 
+    def test_longer_fence_is_closed_only_by_an_equal_or_longer_one(self):
+        text = "---\nname: nested\ndescription: Does it.\n---\n\n````markdown\n```sh\n## inside\n```\n## still inside\n````\n## Real\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "nested").mkdir()
+            (Path(tmp) / "nested" / "SKILL.md").write_text(text)
+            _, out, _ = toc("nested", "--json", folder=tmp)
+            self.assertEqual([h["text"] for h in json.loads(out)["toc"]["headers"]], ["Real"])
+
     def test_skill_without_headers_says_so(self):
         with tempfile.TemporaryDirectory() as tmp:
             make(tmp, "bare", "Does it.", "Just text.\nMore text.\n")
@@ -115,6 +123,50 @@ class Outline(unittest.TestCase):
             row = next(ln for ln in out.splitlines() if ln.startswith("wide: "))
             self.assertEqual(len(row), 160)
             self.assertTrue(row.endswith("…"))
+
+
+class Groups(unittest.TestCase):
+    def home_with_plugins(self, tmp):
+        cfg = Path(tmp) / ".claude"
+        make(cfg / "plugins" / "cache" / "mk" / "plug-a" / "abc123" / "skills", "alpha-skill")
+        make(cfg / "plugins" / "cache" / "mk" / "plug-b" / "abc123" / "skills", "beta-skill")
+        make(cfg / "plugins" / "marketplaces" / "mk2" / "plugins" / "plug-c" / "skills", "gamma-skill")
+        make(cfg / "skills", "user-skill")
+        return dict(HOME=tmp, CLAUDE_CONFIG_DIR="")
+
+    def test_plugin_without_manifest_is_grouped_by_its_folder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = self.home_with_plugins(tmp)
+            _, out, _ = run("--toc", env=env)
+            heads = [ln for ln in out.splitlines() if ln.startswith("## ")]
+            for h in ("## plug-a@mk (1)", "## plug-b@mk (1)", "## plug-c@mk2 (1)"):
+                self.assertIn(h, heads)
+            self.assertFalse([h for h in heads if h.startswith("## ?")], heads)
+            code, out, _ = run("--toc", "plug-a@mk", env=env)
+            self.assertEqual(code, 0)
+            self.assertIn("alpha-skill", out)
+            self.assertNotIn("beta-skill", out)
+
+    def test_groups_print_user_first_then_plugins_by_label_and_names_sort_without_case(self):
+        mod = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            entries = []
+            for i, (name, source, plugin, rank) in enumerate((("zed", "p@m", "p", 1), ("Beta", "user", None, 0), ("alpha", "user", None, 0),
+                                                              ("a1", "a@m", "a", 1), ("r1", "root /x/rr", None, 0))):
+                d = make(tmp, name)
+                os.utime(d, (1000 + 100 * i, 1000 + 100 * i))        # newest last: an mtime order would differ from the fixed one
+                entries.append(dict(name=name, description="Does it.", dir=d, source=source, status="plugin enabled", rank=rank, plugin=plugin, also=[]))
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                mod.toc(list(reversed(entries)), "all", "names", False)
+            lines = buf.getvalue().splitlines()
+            self.assertEqual([ln.split(" (")[0] for ln in lines if ln.startswith("## ")], ["## user", "## rr", "## a", "## p"])
+            self.assertEqual(lines[2:4], ["alpha", "Beta"])
+
+    def test_filesystem_root_is_a_path_prefix(self):
+        code, out, _ = toc("/")
+        self.assertEqual(code, 0)
+        self.assertIn("accessibility", out)
 
 
 class Files(unittest.TestCase):

@@ -253,6 +253,13 @@ def first_sentence(text, n=SENTENCE_MAX):
 def group_of(e):
     """The folder an entry sits under in a table: its plugin, `user`, `project <dir>`, or the basename of an --only or roots folder."""
     src = e["source"]
+    if e.get("plugin") == "?":                 # a plugin folder without plugin.json: its folder name, so the group is not one bucket of strangers
+        market = src.split("@", 1)[-1]
+        parts = e["dir"].parts
+        i = next((i for i, x in enumerate(parts) if x == "plugins" and parts[i + 1:i + 2] in (("cache",), ("marketplaces",))), None)
+        rel = parts[i + 3:] if i is not None else ()
+        folder = rel[0] if rel and parts[i + 1] == "cache" else (rel[rel.index("skills") - 1] if "skills" in rel[1:] else None)
+        return f"{folder or market}@{market}" if folder != "skills" else f"{market}@{market}"
     if e.get("plugin"): return e["plugin"]
     if src == "user" or src.startswith("project "): return src
     p = Path(src.split(" ", 1)[-1]).expanduser()
@@ -273,7 +280,7 @@ def toc_scope(entries, what):
             if hit: return hit
         if os.sep in w or w.startswith(("~", ".")):
             pre = os.path.abspath(os.path.expanduser(w))
-            return [e for e in entries if any(d == pre or d.startswith(pre + os.sep) for d in (os.path.abspath(e["dir"]), os.path.realpath(e["dir"])))]
+            return [e for e in entries if any(d == pre or d.startswith(pre.rstrip(os.sep) + os.sep) for d in (os.path.abspath(e["dir"]), os.path.realpath(e["dir"])))]
         return []
     if not folder_only:
         skills = [e for e in entries if e["name"].lower() == wl or (e.get("plugin") and f"{e['plugin']}:{e['name']}".lower() == wl)]
@@ -300,11 +307,13 @@ def headers_of(path):
         except OSError: return None
     fm = re.match(r"---\s*\n.*?\n---", text, re.S)
     start = text.count("\n", 0, fm.end()) + 1 if fm else 0
-    out, fence = [], False
+    out, fence = [], ""                        # fence: the opening run of ` or ~; only a line made of that character, at least as long, closes it
     for i, ln in enumerate(text.split("\n")):
         if i < start: continue
         ln = ln.rstrip("\r")
-        if ln.strip().startswith(("```", "~~~")): fence = not fence; continue
+        fm_ = re.match(r"(`{3,}|~{3,})(.*)$", ln.strip())
+        if fm_ and (not fence or (fm_.group(1)[0] == fence[0] and len(fm_.group(1)) >= len(fence) and not fm_.group(2).strip())):
+            fence = "" if fence else fm_.group(1); continue
         m = None if fence else re.match(r"(#{1,3})\s+(.+?)(?:\s+#+)?\s*$", ln)
         if m and m.group(2).strip(): out.append((i + 1, len(m.group(1)), m.group(2).strip()))
     return out
@@ -383,7 +392,10 @@ def toc(entries, what, kind, as_json):
     if level == "skill" and (as_json or kind in ("headers", "files")): return toc_skill(es[0], entries, kind, as_json)
     groups = {}
     for e in es: groups.setdefault(group_of(e), []).append(e)
-    groups = [(g, sorted(v, key=lambda e: e["name"])) for g, v in groups.items()]
+    def order(g):                              # fixed: user, project, --only / roots folders, then plugins; by label inside a kind
+        src = groups[g][0]["source"]
+        return (0 if src == "user" else 1 if src.startswith("project ") else 3 if groups[g][0].get("plugin") else 2, g.lower())
+    groups = [(g, sorted(groups[g], key=lambda e: (e["name"].lower(), e["name"]))) for g in sorted(groups, key=order)]
     label = "all" if level == "all" else (groups[0][0] if len(groups) == 1 else what.rstrip("/"))
     if as_json:
         print(json.dumps(dict(toc=dict(scope=label, level=level, kind=kind, scanned=len(entries),
