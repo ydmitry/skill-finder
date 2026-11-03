@@ -527,10 +527,38 @@ def print_best(b, for_text):
         print("References: " + ", ".join(b["references"][:8]) + (f" (+{len(b['references']) - 8} more)" if len(b["references"]) > 8 else ""))
     print(f'Read {b["path"]}, then follow it; search again only if it does not fit.')
 
-def phrase_search(entries, phrases, limit, as_json, for_text=""):
+def phrase_sections(shown):
+    """The shown hits by where the phrase sits: in the name, else in the description, else in the body (ranking order kept inside each)."""
+    sec = dict(name=[], description=[], body=[])
+    for h in shown:
+        found = h[4].values()
+        sec["name" if any(d[0] for d in found) else "description" if any(d[1] for d in found) else "body"].append(h)
+    return sec
+
+def print_phrase_toc(entries, hits, sections, counts, nearest, limit):
+    def row(e, tail=""):
+        return f"{e['name']} — {first_sentence(e['description'], max(20, min(SENTENCE_MAX, ROW_MAX - len(e['name']) - 3 - len(tail)))) or '(no description)'}{tail}"
+    if hits:
+        if len(hits) > limit: print(f"{len(hits)} skill(s) contain it; the best {limit} are shown. A longer phrase narrows it.")
+        for k, v in sections.items():
+            if not v: continue
+            print(f"## phrase in the {k} ({len(v)})")
+            for _, e, _, line, _ in v: print(row(e, f"  :{line[0]}" if line else ""))
+    else:
+        by_path = {str(e["dir"] / "SKILL.md"): e for e in entries}
+        if counts: print("Skills holding each word: " + ", ".join(f"{t} {n}" for t, n in counts.items()) + ". A word held by none is not how any skill says it.")
+        if nearest:
+            print(f"## nearest by words ({len(nearest)})")
+            for r in nearest: print(row(by_path[r["path"]]))
+        else: print("No skill holds any of these words either." if counts else "No skill contains it.")
+    print("Open the one that fits: Read <path>. None fits: search other words, or --toc for the whole table." if hits or nearest
+          else "Search other words, or --toc for the whole table.")
+
+def phrase_search(entries, phrases, limit, as_json, for_text="", toc=False):
     """`grep -il` over the whole SKILL.md of every skill, but ranked (so the shown ones do not depend on directory order) and
     compact: a phrase in the name first, then in the description, then how often it occurs. Several phrases are alternatives; a
-    skill that holds more of them comes first."""
+    skill that holds more of them comes first. With `toc` the hits print as sections (phrase in the name, the description, the body), one
+    sentence each, and no best match."""
     pats = [(ph, phrase_pattern(ph)) for ph in phrases]
     if any(pt is None for _, pt in pats): sys.exit("--phrase needs words or numbers")
     hits = []
@@ -557,14 +585,17 @@ def phrase_search(entries, phrases, limit, as_json, for_text=""):
                  description=" ".join(e["description"].split())[:110], match=f"{line[0]}: {line[1]}" if line else "", also=e["also"])
             for _, e, found, line, _ in shown]
     counts, nearest = near_misses(entries, phrases) if not hits else ({}, [])
-    best = best_match(hits, for_text) if hits else None
+    best = best_match(hits, for_text) if hits and not toc else None
+    sections = phrase_sections(shown) if toc else None
     if as_json:
         out = dict(phrases=phrases, scanned=len(entries), matched=len(hits), shown=len(rows), candidates=rows)
         if not hits: out.update(word_counts=counts, nearest=nearest)
-        else: out.update(best=best)
+        elif not toc: out.update(best=best)
+        if toc: out.update(sections={k: [h[1]["name"] for h in v] for k, v in sections.items()})
         print(json.dumps(out, indent=1)); return
     quoted = " | ".join(f'"{ph}"' for ph in phrases)
     print(f"phrase search: {quoted} in the SKILL.md of {len(entries)} skills on disk (a phrase starts a word: 'plan' matches 'planning', not 'airplane')")
+    if toc: return print_phrase_toc(entries, hits, sections, counts, nearest, limit)
     if not hits:
         print("No skill contains it. Try fewer words, another form of the word, or a word the finished thing is called.")
         if counts:
@@ -632,10 +663,12 @@ def main():
     ap.add_argument("--enable", nargs="+", default=[]); ap.add_argument("--remove", action="store_true")
     ap.add_argument("--into"); ap.add_argument("--source", default="")
     a = ap.parse_args()
+    if a.kind and a.phrase: sys.exit("--kind goes with --toc alone")
     if a.kind and a.toc is None: sys.exit("--kind needs --toc")
     if a.toc is not None:
         for flag in (a.for_text and "--for", a.enable and "--enable", a.remove and "--remove"):
             if flag: sys.exit(f"--toc goes alone or with --phrase, not with {flag}")
+        if a.phrase and a.toc != "all": sys.exit("--phrase --toc takes no WHAT")
         if not a.phrase:
             for flag in (a.task and "--task", a.list and "--list", a.limit != PHRASE_LIMIT and "--limit", a.top != 8 and "--top"):
                 if flag: sys.exit(f"--toc goes alone or with --phrase, not with {flag}")
@@ -649,7 +682,7 @@ def main():
     if a.toc is not None and not a.phrase: return toc(entries, a.toc, a.kind, a.json)
     if a.phrase:
         if a.task: sys.exit("use --phrase or --task, not both")
-        return phrase_search(entries, a.phrase, a.limit, a.json, a.for_text)
+        return phrase_search(entries, a.phrase, a.limit, a.json, a.for_text, a.toc is not None)
     if a.list or not a.task:
         for e in entries:
             print(f"{e['status']:<32} {e['source']:<40} {e['name']:<36} {e['dir']}")

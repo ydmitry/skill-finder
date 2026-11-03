@@ -5,6 +5,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -192,6 +193,105 @@ class Files(unittest.TestCase):
             self.skill_with(tmp, "one", {})
             _, out, _ = toc("one", folder=tmp)
             self.assertNotIn("more files", out.splitlines()[0])
+
+
+class PhraseToc(unittest.TestCase):
+    def phrase(self, *args, folder=FIXTURES):
+        return run("--only", str(folder), "--phrase", *args)
+
+    def test_phrase_toc_name_section(self):
+        code, out, _ = self.phrase("goal loop", "--toc")
+        self.assertEqual(code, 0)
+        lines = out.splitlines()
+        self.assertTrue(lines[0].startswith('phrase search: "goal loop" in the SKILL.md of 18 skills on disk'), lines[0])
+        self.assertIn("## phrase in the name (1)", lines)
+        row = lines[lines.index("## phrase in the name (1)") + 1]
+        self.assertTrue(row.startswith("goal-loop — Run a coding agent headless") and row.endswith("  :6"), row)
+        self.assertNotIn("Best match", out)
+        self.assertNotIn("Why:", out)
+        self.assertEqual(lines[-1], "Open the one that fits: Read <path>. None fits: search other words, or --toc for the whole table.")
+
+    def test_phrase_toc_description_rows_have_no_line(self):
+        _, out, _ = self.phrase("pull request", "--toc")
+        lines = out.splitlines()
+        at = lines.index("## phrase in the description (3)")
+        rows = lines[at + 1:at + 4]
+        self.assertEqual([r.split(" — ")[0] for r in rows], ["playwright-live", "pr-review", "release-notes"])
+        self.assertFalse(any(re.search(r":\d+$", r) for r in rows), rows)
+        self.assertEqual([ln for ln in lines if ln.startswith("## ")], ["## phrase in the description (3)"])
+
+    def test_phrase_toc_body_section(self):
+        _, out, _ = self.phrase("contrast ratio", "--toc")                          # in a description and in the body: the description section
+        self.assertIn("## phrase in the description (1)", out)
+        self.assertTrue(any(ln.startswith("accessibility — ") and ln.endswith("  :8") for ln in out.splitlines()), out)
+        with tempfile.TemporaryDirectory() as tmp:
+            make(tmp, "alpha-skill", "Does a thing.", "# Alpha\nFollow the zebra crossing protocol.\n")
+            make(tmp, "beta-skill", "Reads the zebra crossing.", "# Beta\n")
+            make(tmp, "zebra-crossing", "Name hit.", "# Z\n")
+            _, out, _ = self.phrase("zebra crossing", "--toc", folder=tmp)
+            lines = out.splitlines()
+            self.assertEqual([ln for ln in lines if ln.startswith("## ")],
+                             ["## phrase in the name (1)", "## phrase in the description (1)", "## phrase in the body (1)"])
+            self.assertEqual(lines[lines.index("## phrase in the body (1)") + 1], "alpha-skill — Does a thing.  :7")
+
+    def test_phrase_without_toc_is_unchanged(self):
+        _, out, _ = self.phrase("goal loop")
+        self.assertIn("Best match:", out)
+        self.assertNotIn("## phrase in", out)
+        self.assertNotIn("Open the one that fits", out)
+
+    def test_phrase_toc_miss_prints_nearest_section_only(self):
+        code, out, _ = self.phrase("ratio contrast", "--toc")
+        lines = out.splitlines()
+        self.assertEqual(code, 0)
+        self.assertIn("Skills holding each word: ratio 1, contrast 1. A word held by none is not how any skill says it.", lines)
+        self.assertEqual([ln for ln in lines if ln.startswith("## ")], ["## nearest by words (1)"])
+        self.assertEqual(lines[lines.index("## nearest by words (1)") + 1].split(" — ")[0], "accessibility")
+        self.assertNotIn("Nearest by words,", out)
+        self.assertEqual(lines[-1], "Open the one that fits: Read <path>. None fits: search other words, or --toc for the whole table.")
+
+    def test_phrase_toc_miss_with_no_near_skill(self):
+        _, out, _ = self.phrase("xyzzy plugh", "--toc")
+        self.assertIn("No skill holds any of these words either.", out)
+        self.assertNotIn("## ", out)
+        self.assertEqual(out.splitlines()[-1], "Search other words, or --toc for the whole table.")
+
+    def test_phrase_toc_json_sections(self):
+        _, out, _ = self.phrase("pull request", "--toc", "--json")
+        o = json.loads(out)
+        self.assertNotIn("best", o)
+        names = [c["name"] for c in o["candidates"]]
+        s = o["sections"]
+        self.assertEqual((s["name"], s["body"]), ([], []))
+        self.assertEqual(s["description"], names)
+        _, out, _ = self.phrase("goal loop", "--toc", "--json")
+        self.assertEqual(json.loads(out)["sections"], {"name": ["goal-loop"], "description": [], "body": []})
+        _, out, _ = self.phrase("ratio contrast", "--toc", "--json")
+        o = json.loads(out)
+        self.assertEqual(o["sections"], {"name": [], "description": [], "body": []})
+        self.assertIn("nearest", o)
+
+    def test_phrase_toc_is_capped_by_limit(self):
+        _, out, _ = self.phrase("the", "--toc", "--limit", "2")
+        rows = [ln for ln in out.splitlines() if " — " in ln]
+        self.assertEqual(len(rows), 2)
+        self.assertIn("the best 2 are shown", out)
+
+    def test_phrase_toc_with_for_exits_1(self):
+        code, out, err = self.phrase("goal loop", "--toc", "--for", "x")
+        self.assertEqual((code, out), (1, ""))
+        self.assertIn("--toc goes alone or with --phrase, not with --for", err)
+
+    def test_phrase_toc_with_what_exits_1(self):
+        code, _, err = self.phrase("goal loop", "--toc", "user")
+        self.assertEqual(code, 1)
+        self.assertIn("--phrase --toc takes no WHAT", err)
+
+    def test_phrase_with_kind_exits_1(self):
+        for extra in (("--toc", "--kind", "names"), ("--kind", "names")):
+            code, _, err = self.phrase("goal loop", *extra)
+            self.assertEqual(code, 1, extra)
+            self.assertIn("--kind goes with --toc alone", err)
 
 
 class Tables(unittest.TestCase):
