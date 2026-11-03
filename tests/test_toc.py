@@ -39,6 +39,83 @@ def load_module():
     return mod
 
 
+class Outline(unittest.TestCase):
+    def test_goal_loop_outline_is_its_one_header(self):
+        code, out, _ = toc("goal-loop", "--json")
+        t = json.loads(out)["toc"]
+        self.assertEqual(code, 0)
+        self.assertEqual(t["headers"], [{"line": 6, "level": 1, "text": "goal-loop"}])
+        self.assertEqual((t["scope"], t["level"], t["kind"], t["name"]), ("goal-loop", "skill", "headers", "goal-loop"))
+        self.assertTrue(t["path"].endswith("goal-loop/SKILL.md"), t["path"])
+
+    def test_outline_lines_point_at_header_lines(self):
+        body = "# Top\n" + "text\n" * 6 + "## When to use\nx\n### 1. Read\n#### too deep\n## Steps ##\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            make(tmp, "outlined", "Does it. More.", body)
+            _, out, _ = toc("outlined", "--json", folder=tmp)
+            t = json.loads(out)["toc"]
+            self.assertEqual([(h["line"], h["level"], h["text"]) for h in t["headers"]],
+                             [(6, 1, "Top"), (13, 2, "When to use"), (15, 3, "1. Read"), (17, 2, "Steps")])
+            lines = (Path(tmp) / "outlined" / "SKILL.md").read_text().split("\n")
+            self.assertTrue(all(lines[h["line"] - 1].lstrip("#").strip().startswith(h["text"]) for h in t["headers"]))
+            _, out, _ = toc("outlined", folder=tmp)
+            rows = out.splitlines()
+            self.assertIn("  13: ## When to use", rows)
+            self.assertIn("   6: # Top", rows)
+            self.assertTrue(rows[-1].startswith("Read a section: Read "), rows[-1])
+            self.assertEqual(rows[-1], "Read a section: Read <path> with offset <line>. Whole file: Read <path>.")
+
+    def test_default_kind_for_a_skill_is_headers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            make(tmp, "plain", "Does a plain thing. Then more.", "# Plain\n## Step\n")
+            _, out, _ = toc("plain", folder=tmp)
+            rows = out.splitlines()
+            self.assertTrue(rows[0].startswith("plain  " + str(Path(tmp) / "plain" / "SKILL.md") + "  ("), rows[0])
+            self.assertIn(" bytes)", rows[0])
+            self.assertEqual(rows[1], "Does a plain thing.")
+            self.assertEqual(rows[2:4], ["   6: # Plain", "   7: ## Step"])
+
+    def test_fenced_and_frontmatter_hashes_are_not_headers(self):
+        text = "---\nname: fenced\n# a yaml comment\ndescription: Does it.\n---\n\n```sh\n# not a header\n```\n~~~\n## nor this\n~~~\n## Real\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "fenced").mkdir()
+            (Path(tmp) / "fenced" / "SKILL.md").write_text(text)
+            _, out, _ = toc("fenced", "--json", folder=tmp)
+            self.assertEqual(json.loads(out)["toc"]["headers"], [{"line": 13, "level": 2, "text": "Real"}])
+
+    def test_skill_without_headers_says_so(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            make(tmp, "bare", "Does it.", "Just text.\nMore text.\n")
+            _, out, _ = toc("bare", folder=tmp)
+            self.assertIn("no headers; 7 lines", out)
+            _, out, _ = toc("bare", "--json", folder=tmp)
+            self.assertEqual(json.loads(out)["toc"]["headers"], [])
+
+    def test_a_skill_over_300_kb_has_no_outline(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            make(tmp, "huge", "Does it.", "# Huge\n" + "x" * 300_100 + "\n")
+            _, out, _ = toc("huge", folder=tmp)
+            self.assertIn("(file too large for an outline)", out)
+
+    def test_headers_kind_for_every_skill(self):
+        _, out, _ = toc("--kind", "headers")
+        rows = [ln for ln in out.splitlines() if ": (no H2) " in ln]
+        self.assertEqual(len(rows), 18)
+        self.assertIn("goal-loop: (no H2) goal-loop", rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            make(tmp, "with-h2", "Does it.", "# T\n## A\n### sub\n## B\n")
+            _, out, _ = toc("--kind", "headers", folder=tmp)
+            self.assertIn("with-h2: A | B", out.splitlines())
+
+    def test_long_header_row_is_cut(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            make(tmp, "wide", "Does it.", "# T\n" + "".join(f"## Header number {i:02d} xx\n" for i in range(40)))
+            _, out, _ = toc("--kind", "headers", folder=tmp)
+            row = next(ln for ln in out.splitlines() if ln.startswith("wide: "))
+            self.assertEqual(len(row), 160)
+            self.assertTrue(row.endswith("…"))
+
+
 class Tables(unittest.TestCase):
     def skill_lines(self, text):
         return [ln for ln in text.splitlines() if " — " in ln and not ln.startswith(("table of contents", "Narrow"))]
@@ -182,10 +259,10 @@ class Tables(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("--kind needs --toc", err)
 
-    def test_headers_and_files_kinds_are_refused_until_their_tasks(self):
+    def test_files_kind_is_refused_until_its_task(self):
         code, _, err = toc("--kind", "files")
         self.assertEqual(code, 1)
-        self.assertIn("--kind", err)
+        self.assertIn("--kind files", err)
 
     def test_json_shape(self):
         code, out, _ = toc("--json")

@@ -289,9 +289,33 @@ def toc_scope(entries, what):
     sys.exit(f"no skill, folder or path matches {what!r}; folders: " + ", ".join(dict.fromkeys(group_of(e) for e in entries))
              + ("; skills with that in the name: " + ", ".join(like) if like else ""))
 
-def toc_row(e, kind):
+def headers_of(path):
+    """(line, level, text) of the # to ### headers of a markdown file, after its frontmatter and outside code fences; line numbers as on
+    disk. None when the file is too large to read (read_small gives nothing for it)."""
+    text = read_small(path)
+    if not text:
+        try: return None if path.stat().st_size else []
+        except OSError: return None
+    fm = re.match(r"---\s*\n.*?\n---", text, re.S)
+    start = text.count("\n", 0, fm.end()) + 1 if fm else 0
+    out, fence = [], False
+    for i, ln in enumerate(text.split("\n")):
+        if i < start: continue
+        ln = ln.rstrip("\r")
+        if ln.strip().startswith(("```", "~~~")): fence = not fence; continue
+        m = None if fence else re.match(r"(#{1,3})\s+(.+?)(?:\s+#+)?\s*$", ln)
+        if m and m.group(2).strip(): out.append((i + 1, len(m.group(1)), m.group(2).strip()))
+    return out
+
+def toc_row(e, kind, heads=None):
     tail = (" [off]" if off(e) else "") + (f" (also at {len(e['also'])})" if e["also"] else "")
     name = e["name"]
+    if kind == "headers":
+        h2 = [t for _, lv, t in heads or [] if lv == 2]
+        body = " | ".join(h2) if h2 else ("(file too large for an outline)" if heads is None else
+               "(no H2) " + next((t for _, lv, t in heads if lv == 1), "(no headers)"))
+        room = ROW_MAX - len(name) - 2 - len(tail)
+        return f"{name}: {body if len(body) <= room else body[:room - 1] + '…'}{tail}"
     if kind == "names": line = name + tail
     elif kind == "description": return f"{name} — {whole(' '.join(e['description'].split())) or '(no description)'}{tail}"
     else:
@@ -301,13 +325,32 @@ def toc_row(e, kind):
 def toc_entry(e, kind):
     out = dict(name=e["name"], sentence=first_sentence(e["description"]), status=e["status"], path=str(e["dir"] / "SKILL.md"), off=off(e), also=e["also"])
     if kind == "description": out["description"] = " ".join(e["description"].split())
+    if kind == "headers": out["headers"] = [t for _, lv, t in headers_of(e["dir"] / "SKILL.md") or [] if lv == 2]
     return out
+
+def toc_skill(e, entries, kind, as_json):
+    """One skill: its header outline with line numbers (kind headers)."""
+    path = e["dir"] / "SKILL.md"
+    size = path.stat().st_size
+    sentence = first_sentence(e["description"])
+    heads = headers_of(path)
+    if as_json:
+        t = dict(scope=e["name"], level="skill", kind=kind, scanned=len(entries), **toc_entry(e, kind), bytes=size)
+        if kind == "headers": t["headers"] = None if heads is None else [dict(line=n, level=lv, text=tx) for n, lv, tx in heads]
+        print(json.dumps(dict(toc=t), indent=1)); return
+    print(f"{e['name']}  {path}  ({size:,} bytes)")
+    print(sentence or "(no description)")
+    if heads is None: print("(file too large for an outline)")
+    elif not heads: print(f"no headers; {len(read_small(path).splitlines())} lines")
+    for n, lv, tx in heads or []: print(f"{n:>4}: {'#' * lv} {tx}")
+    print("Read a section: Read <path> with offset <line>. Whole file: Read <path>.")
 
 def toc(entries, what, kind, as_json):
     """--toc: a table of contents. Every skill or one folder: a row each; one skill: its outline or files. No model call."""
     level, es = toc_scope(entries, what)
     kind = kind or ("headers" if level == "skill" else "sentence")
-    if kind in ("headers", "files"): sys.exit("--kind headers|files lands with Tasks 2 and 3")
+    if kind == "files": sys.exit("--kind files lands with Task 3")
+    if level == "skill" and (as_json or kind == "headers"): return toc_skill(es[0], entries, kind, as_json)
     groups = {}
     for e in es: groups.setdefault(group_of(e), []).append(e)
     groups = [(g, sorted(v, key=lambda e: e["name"])) for g, v in groups.items()]
@@ -315,11 +358,11 @@ def toc(entries, what, kind, as_json):
     if as_json:
         print(json.dumps(dict(toc=dict(scope=label, level=level, kind=kind, scanned=len(entries),
               groups=[dict(group=g, entries=[toc_entry(e, kind) for e in v]) for g, v in groups])), indent=1)); return
-    said = {"names": "name", "sentence": "name — first sentence", "description": "name — description"}[kind]
+    said = {"names": "name", "sentence": "name — first sentence", "description": "name — description", "headers": "name: H2 headers"}[kind]
     print(f"table of contents: {len(es)} skill{'s' * (len(es) != 1)} in {len(groups)} folder{'s' * (len(groups) != 1)} ({said}; [off] = plugin not enabled or not installed)")
     for g, v in groups:
         print(f"## {g} ({len(v)})")
-        for e in v: print(toc_row(e, kind))
+        for e in v: print(toc_row(e, kind, headers_of(e["dir"] / "SKILL.md") if kind == "headers" else None))
     print("Narrow: --toc <folder> | one skill: --toc <skill> (headers) or --toc <skill> --kind files | open: Read <path>")
 
 def phrase_pattern(phrase):
