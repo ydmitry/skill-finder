@@ -40,6 +40,16 @@ def load_module():
     return mod
 
 
+def closing_line(script, home=None):
+    """The last line of a phrase table that shows rows, for a script run by `script` (the home folder written ~)."""
+    p = str(script)
+    home = (home if home is not None else os.path.expanduser("~")).rstrip("/")
+    if home and p.startswith(home + "/"):
+        p = "~" + p[len(home):]
+    return (f'Open the one that fits: python3 {p} --toc "<name>" prints its path and sections. '
+            "None fits: search other words, or --toc for the whole table.")
+
+
 class Outline(unittest.TestCase):
     def test_goal_loop_outline_is_its_one_header(self):
         code, out, _ = toc("goal-loop", "--json")
@@ -64,7 +74,7 @@ class Outline(unittest.TestCase):
             self.assertIn("  13: ## When to use", rows)
             self.assertIn("   6: # Top", rows)
             self.assertTrue(rows[-1].startswith("Read a section: Read "), rows[-1])
-            self.assertEqual(rows[-1], "Read a section: Read <path> with offset <line>. Whole file: Read <path>.")
+            self.assertEqual(rows[-1], "Read a section: Read the path above with offset <line>; the whole file: Read the path above.")
 
     def test_default_kind_for_a_skill_is_headers(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -261,7 +271,7 @@ class PhraseToc(unittest.TestCase):
         self.assertTrue(row.startswith("goal-loop — Run a coding agent headless") and row.endswith("  :6"), row)
         self.assertNotIn("Best match", out)
         self.assertNotIn("Why:", out)
-        self.assertEqual(lines[-1], "Open the one that fits: Read <path>. None fits: search other words, or --toc for the whole table.")
+        self.assertEqual(lines[-1], closing_line(FINDER))
 
     def test_phrase_toc_description_rows_have_no_line(self):
         _, out, _ = self.phrase("pull request", "--toc")
@@ -300,13 +310,68 @@ class PhraseToc(unittest.TestCase):
         self.assertEqual([ln for ln in lines if ln.startswith("## ")], ["## nearest by words (1)"])
         self.assertEqual(lines[lines.index("## nearest by words (1)") + 1].split(" — ")[0], "accessibility")
         self.assertNotIn("Nearest by words,", out)
-        self.assertEqual(lines[-1], "Open the one that fits: Read <path>. None fits: search other words, or --toc for the whole table.")
+        self.assertEqual(lines[-1], closing_line(FINDER))
 
     def test_phrase_toc_miss_with_no_near_skill(self):
         _, out, _ = self.phrase("xyzzy plugh", "--toc")
         self.assertIn("No skill holds any of these words either.", out)
         self.assertNotIn("## ", out)
         self.assertEqual(out.splitlines()[-1], "Search other words, or --toc for the whole table.")
+
+    def last_line(self, script, *args, home=None, cwd=None):
+        env = {**os.environ, **({"HOME": str(home)} if home is not None else {})}
+        out = subprocess.run([sys.executable, str(script), "--only", str(FIXTURES), "--phrase", "goal loop", "--toc", *args],
+                             capture_output=True, text=True, env=env, cwd=cwd)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        return out.stdout.splitlines()[-1]
+
+    def test_closing_line_names_the_toc_command_with_the_script_as_run(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp).resolve()
+            (home / "work").mkdir()
+            (home / "work" / "finder").symlink_to(HERE.parent)                     # the repo as the user's home reaches it
+            real = home / "work" / "finder" / "scripts" / "find_skills.py"
+            self.assertEqual(self.last_line(real, home=home),
+                             'Open the one that fits: python3 ~/work/finder/scripts/find_skills.py --toc "<name>" '
+                             "prints its path and sections. None fits: search other words, or --toc for the whole table.")
+
+    def test_closing_line_keeps_a_symlinked_path_unresolved(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp).resolve()
+            (home / "skills").mkdir()
+            (home / "skills" / "skill-finder").symlink_to(HERE.parent)             # like ~/.claude/skills/skill-finder -> the repo
+            line = self.last_line(home / "skills" / "skill-finder" / "scripts" / "find_skills.py", home=home)
+            self.assertIn(' python3 ~/skills/skill-finder/scripts/find_skills.py --toc "<name>" ', line)
+            self.assertNotIn(str(HERE.parent), line)
+
+    def test_closing_line_outside_home_stays_absolute(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            line = self.last_line(FINDER, home=tmp)
+            self.assertEqual(line, closing_line(FINDER, home=tmp))
+            self.assertIn(f" python3 {FINDER} --toc ", line)
+            self.assertNotIn("~", line)
+
+    def test_closing_line_for_a_relative_run_is_absolute(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            line = self.last_line("find_skills.py", home=tmp, cwd=FINDER.parent)
+            self.assertIn(f" python3 {FINDER} --toc ", line)
+
+    def test_closing_line_home_prefix_is_a_folder_prefix(self):
+        mod = load_module()
+        self.assertEqual(mod.invoked_script("/Users/al/work/f.py", home="/Users/al"), "~/work/f.py")
+        self.assertEqual(mod.invoked_script("/Users/al/work/f.py", home="/Users/al/"), "~/work/f.py")
+        self.assertEqual(mod.invoked_script("/Users/alice/f.py", home="/Users/al"), "/Users/alice/f.py")
+        self.assertEqual(mod.invoked_script("/opt/f.py", home="/"), "/opt/f.py")
+        self.assertEqual(mod.invoked_script("/opt/f.py", home=""), "/opt/f.py")
+
+    def test_closing_line_when_imported_names_the_loaded_file(self):
+        mod = load_module()                                                         # nothing was run by a path: __file__ is the module's own
+        self.assertEqual(mod.invoked_script(home="/nowhere"), str(FINDER))
+        self.assertEqual(mod.invoked_script(home=str(FINDER.parent.parent)), "~/scripts/find_skills.py")
+
+    def test_phrase_without_rows_has_no_toc_command(self):
+        _, out, _ = self.phrase("xyzzy plugh", "--toc")
+        self.assertNotIn("python3", out)
 
     def test_phrase_toc_json_sections(self):
         _, out, _ = self.phrase("pull request", "--toc", "--json")

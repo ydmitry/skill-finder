@@ -384,7 +384,7 @@ def toc_skill(e, entries, kind, as_json):
     if heads is None: print("(file too large for an outline)")
     elif not heads: print(f"no headers; {len(read_small(path).splitlines())} lines")
     for n, lv, tx in heads or []: print(f"{n:>4}: {'#' * lv} {tx}")
-    print("Read a section: Read <path> with offset <line>. Whole file: Read <path>.")
+    print("Read a section: Read the path above with offset <line>; the whole file: Read the path above.")
 
 def toc(entries, what, kind, as_json):
     """--toc: a table of contents. Every skill or one folder: a row each; one skill: its outline or files. No model call."""
@@ -549,6 +549,13 @@ def phrase_sections(shown):
         sec["name" if any(d[0] for d in found) else "description" if any(d[1] for d in found) else "body"].append(h)
     return sec
 
+def invoked_script(path=None, home=None):
+    """The path this script was run by, as a command can use it: absolute, symlinks as given (not resolved), the home folder as ~.
+    `__file__`, not sys.argv[0]: run as a script it is the path it was started by, and imported (the tests) it is still the module's own file."""
+    p = os.path.abspath(path or __file__)
+    home = (home if home is not None else os.path.expanduser("~")).rstrip(os.sep)
+    return "~" + p[len(home):] if home and p.startswith(home + os.sep) else p
+
 def print_phrase_toc(entries, hits, sections, counts, nearest, limit):
     def row(e, tail=""):
         return f"{e['name']} — {first_sentence(e['description'], max(20, min(SENTENCE_MAX, ROW_MAX - len(e['name']) - 3 - len(tail)))) or '(no description)'}{tail}"
@@ -565,8 +572,8 @@ def print_phrase_toc(entries, hits, sections, counts, nearest, limit):
             print(f"## nearest by words ({len(nearest)})")
             for r in nearest: print(row(by_path[r["path"]]))
         else: print("No skill holds any of these words either." if counts else "No skill contains it.")
-    print("Open the one that fits: Read <path>. None fits: search other words, or --toc for the whole table." if hits or nearest
-          else "Search other words, or --toc for the whole table.")
+    print(f'Open the one that fits: python3 {invoked_script()} --toc "<name>" prints its path and sections. None fits: search other words, or --toc for the whole table.'
+          if hits or nearest else "Search other words, or --toc for the whole table.")
 
 def phrase_search(entries, phrases, limit, as_json, for_text="", toc=False):
     """`grep -il` over the whole SKILL.md of every skill, but ranked (so the shown ones do not depend on directory order) and
