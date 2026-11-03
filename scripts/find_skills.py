@@ -43,6 +43,10 @@ CLOSEST = 10            # a phrase that matches nothing lists this many skills n
 CLOSEST_FULL = 3        # the first of them with the start of the description, the rest as a name and a path
 GENERIC_SHARE = 0.20     # a task word found in over a fifth of the skills' texts says little about which skill fits
 MARGIN = 1.3             # the top hit counts as clear when it scores this much more than the next one
+SENTENCE_MAX = 120       # --toc: a skill's row holds the description's first sentence, cut at a word beyond this
+ROW_MAX = 160            # ... and a names, sentence or headers row is at most this long
+ON = {"user skill", "plugin enabled", "project skill", "folder skill", "extra root"}     # statuses Claude Code loads; any other row is [off]
+NOT_END = {"e.g", "i.e", "vs", "etc", "cf"}
 
 def default_roots():
     f = Path(os.environ.get("SKILL_FINDER_ROOTS") or Path(__file__).with_name("roots"))
@@ -230,6 +234,93 @@ def reference_index(sdir):
         first = next((l.strip().lstrip("# ") for l in read_small(p).splitlines() if l.strip()), "")
         out.append((p, first[:90]))
     return out
+
+def first_sentence(text, n=SENTENCE_MAX):
+    """The description's first sentence: up to a . ! or ? followed by an uppercase letter, a quote or the end, never after e.g, vs, etc.
+    A longer one, or text without any sentence end, is cut at a word and ends with "…"."""
+    text = " ".join(text.split())
+    s = text
+    for m in re.finditer(r"[.!?](?=\s+[A-Z\"'“‘(]|$)", text):
+        if text[:m.start()].split(" ")[-1].lower().lstrip("(\"'“‘") in NOT_END: continue
+        s = text[:m.end()]; break
+    if len(s) <= n: return s
+    cut = s[:n - 1]
+    if s[n - 1] != " " and " " in cut: cut = cut[:cut.rfind(" ")]
+    return cut.rstrip(" ,;:-") + "…"
+
+def group_of(e):
+    """The folder an entry sits under in a table: its plugin, `user`, `project <dir>`, or the basename of an --only or roots folder."""
+    src = e["source"]
+    if e.get("plugin"): return e["plugin"]
+    if src == "user" or src.startswith("project "): return src
+    p = Path(src.split(" ", 1)[-1]).expanduser()
+    return p.name or p.resolve().name
+
+def off(e):
+    return e["status"] not in ON
+
+def toc_scope(entries, what):
+    """What --toc names -> ("all" | "folder" | "skill", the entries). In order: a skill name or plugin:name, a folder label, a full
+    source key pname@market, a marketplace, a path prefix; a trailing / means folder only. No match, or two skills: exit with the candidates."""
+    if what == "all": return "all", entries
+    folder_only, w = what.endswith("/") and len(what) > 1, what.rstrip("/") if what.endswith("/") and len(what) > 1 else what
+    wl = w.lower()
+    def folder():
+        for pick in (lambda e: group_of(e).lower() == wl, lambda e: e["source"].lower() == wl, lambda e: e["source"].lower().endswith("@" + wl)):
+            hit = [e for e in entries if pick(e)]
+            if hit: return hit
+        if os.sep in w or w.startswith(("~", ".")):
+            pre = os.path.abspath(os.path.expanduser(w))
+            return [e for e in entries if any(d == pre or d.startswith(pre + os.sep) for d in (os.path.abspath(e["dir"]), os.path.realpath(e["dir"])))]
+        return []
+    if not folder_only:
+        skills = [e for e in entries if e["name"].lower() == wl or (e.get("plugin") and f"{e['plugin']}:{e['name']}".lower() == wl)]
+        if not skills and (os.sep in w or w.startswith(("~", "."))):          # a path that is one skill's folder names that skill
+            pre = os.path.abspath(os.path.expanduser(w))
+            skills = [e for e in entries if pre in (os.path.abspath(e["dir"]), os.path.realpath(e["dir"]))]
+        if len(skills) > 1:
+            sys.exit(f"{len(skills)} skills are named {what!r}: " + "; ".join(f"{e['dir']} [{e['source']}]" for e in skills) + "; use plugin:name or the path")
+        if skills:
+            if folder(): print(f"also a folder: --toc {w}/", file=sys.stderr)
+            return "skill", skills
+    hit = folder()
+    if hit: return "folder", hit
+    like = sorted({e["name"] for e in entries if wl in e["name"].lower()})[:8]
+    sys.exit(f"no skill, folder or path matches {what!r}; folders: " + ", ".join(dict.fromkeys(group_of(e) for e in entries))
+             + ("; skills with that in the name: " + ", ".join(like) if like else ""))
+
+def toc_row(e, kind):
+    tail = (" [off]" if off(e) else "") + (f" (also at {len(e['also'])})" if e["also"] else "")
+    name = e["name"]
+    if kind == "names": line = name + tail
+    elif kind == "description": return f"{name} — {whole(' '.join(e['description'].split())) or '(no description)'}{tail}"
+    else:
+        line = f"{name} — {first_sentence(e['description'], max(20, min(SENTENCE_MAX, ROW_MAX - len(name) - 3 - len(tail)))) or '(no description)'}{tail}"
+    return line if len(line) <= ROW_MAX else line[:ROW_MAX - 1] + "…"
+
+def toc_entry(e, kind):
+    out = dict(name=e["name"], sentence=first_sentence(e["description"]), status=e["status"], path=str(e["dir"] / "SKILL.md"), off=off(e), also=e["also"])
+    if kind == "description": out["description"] = " ".join(e["description"].split())
+    return out
+
+def toc(entries, what, kind, as_json):
+    """--toc: a table of contents. Every skill or one folder: a row each; one skill: its outline or files. No model call."""
+    level, es = toc_scope(entries, what)
+    kind = kind or ("headers" if level == "skill" else "sentence")
+    if kind in ("headers", "files"): sys.exit("--kind headers|files lands with Tasks 2 and 3")
+    groups = {}
+    for e in es: groups.setdefault(group_of(e), []).append(e)
+    groups = [(g, sorted(v, key=lambda e: e["name"])) for g, v in groups.items()]
+    label = "all" if level == "all" else (groups[0][0] if len(groups) == 1 else what.rstrip("/"))
+    if as_json:
+        print(json.dumps(dict(toc=dict(scope=label, level=level, kind=kind, scanned=len(entries),
+              groups=[dict(group=g, entries=[toc_entry(e, kind) for e in v]) for g, v in groups])), indent=1)); return
+    said = {"names": "name", "sentence": "name — first sentence", "description": "name — description"}[kind]
+    print(f"table of contents: {len(es)} skill{'s' * (len(es) != 1)} in {len(groups)} folder{'s' * (len(groups) != 1)} ({said}; [off] = plugin not enabled or not installed)")
+    for g, v in groups:
+        print(f"## {g} ({len(v)})")
+        for e in v: print(toc_row(e, kind))
+    print("Narrow: --toc <folder> | one skill: --toc <skill> (headers) or --toc <skill> --kind files | open: Read <path>")
 
 def phrase_pattern(phrase):
     """The words of a phrase in order, joined by space, newline, hyphen or underscore; the first word starts a word."""
@@ -461,10 +552,20 @@ def main():
     ap.add_argument("--root", action="append", default=[]); ap.add_argument("--list", action="store_true")
     ap.add_argument("--only", action="append", default=[], metavar="DIR",
                     help="scan only DIR/<name>/SKILL.md (repeatable): no config dirs, no project skills; for tests and fixtures")
+    ap.add_argument("--toc", nargs="?", const="all", default=None, metavar="WHAT",
+                    help="a table of contents: every skill (name, first sentence), one folder, or one skill (its headers; --kind files for its files)")
+    ap.add_argument("--kind", choices=("sentence", "names", "description", "headers", "files"), default=None, help="--toc: what each row holds")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--enable", nargs="+", default=[]); ap.add_argument("--remove", action="store_true")
     ap.add_argument("--into"); ap.add_argument("--source", default="")
     a = ap.parse_args()
+    if a.kind and a.toc is None: sys.exit("--kind needs --toc")
+    if a.toc is not None:
+        for flag in (a.for_text and "--for", a.enable and "--enable", a.remove and "--remove"):
+            if flag: sys.exit(f"--toc goes alone or with --phrase, not with {flag}")
+        if not a.phrase:
+            for flag in (a.task and "--task", a.list and "--list", a.limit != PHRASE_LIMIT and "--limit", a.top != 8 and "--top"):
+                if flag: sys.exit(f"--toc goes alone or with --phrase, not with {flag}")
     if a.remove:
         if not a.into: sys.exit("--remove needs --into DIR")
         return remove(a.into)
@@ -472,6 +573,7 @@ def main():
     if a.enable:
         if not a.into: sys.exit("--enable needs --into DIR")
         return enable(entries, a.enable, a.into, a.source)
+    if a.toc is not None and not a.phrase: return toc(entries, a.toc, a.kind, a.json)
     if a.phrase:
         if a.task: sys.exit("use --phrase or --task, not both")
         return phrase_search(entries, a.phrase, a.limit, a.json, a.for_text)

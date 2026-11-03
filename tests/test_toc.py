@@ -1,0 +1,202 @@
+"""--toc: tables of contents of the skills on disk (all skills, one folder, one skill, one skill's files), and a phrase search printed
+as a table. No model and no machine state: the 18 fixture skills plus temporary skill folders the tests write."""
+import contextlib
+import importlib.util
+import io
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+FINDER = HERE.parent / "scripts" / "find_skills.py"
+FIXTURES = HERE / "fixtures" / "skills"
+
+
+def run(*args, env=None):
+    out = subprocess.run([sys.executable, str(FINDER), *args], capture_output=True, text=True, env={**os.environ, **(env or {})})
+    return out.returncode, out.stdout, out.stderr
+
+
+def toc(*args, folder=FIXTURES):
+    return run("--only", str(folder), "--toc", *args)
+
+
+def make(root, name, description="Does a thing.", body="# {name}\n"):
+    d = Path(root) / name
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "SKILL.md").write_text(f"---\nname: {name}\ndescription: {description}\n---\n\n" + body.format(name=name))
+    return d
+
+
+def load_module():
+    spec = importlib.util.spec_from_file_location("find_skills_under_test", FINDER)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+class Tables(unittest.TestCase):
+    def skill_lines(self, text):
+        return [ln for ln in text.splitlines() if " — " in ln and not ln.startswith(("table of contents", "Narrow"))]
+
+    def test_every_skill_one_line_each(self):
+        code, out, _ = toc()
+        lines = out.splitlines()
+        self.assertEqual(code, 0)
+        self.assertTrue(lines[0].startswith("table of contents: 18 skills in 1 folder"), lines[0])
+        self.assertEqual(lines[1], "## skills (18)")
+        self.assertEqual(len(lines[2:20]), 18)
+        self.assertTrue(all(" — " in ln for ln in lines[2:20]), lines[2:20])
+        self.assertTrue(lines[2].startswith("accessibility — Accessibility checks for web pages"), lines[2])
+        self.assertTrue(lines[-1].startswith("Narrow: --toc <folder>"), lines[-1])
+
+    def test_sentence_is_first_sentence_at_most_120_chars(self):
+        _, out, _ = toc("--json")
+        entries = json.loads(out)["toc"]["groups"][0]["entries"]
+        self.assertTrue(all(len(e["sentence"]) <= 120 for e in entries))
+        by = {e["name"]: e["sentence"] for e in entries}
+        self.assertTrue(by["goal-loop"].endswith("or a budget ends."), by["goal-loop"])
+        self.assertNotIn("Use for a task", by["goal-loop"])
+
+    def test_sentence_without_punctuation_is_cut_at_a_word(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            make(tmp, "long-one", " ".join(["wordy"] * 60))
+            _, out, _ = toc("--json", folder=tmp)
+            s = json.loads(out)["toc"]["groups"][0]["entries"][0]["sentence"]
+            self.assertTrue(s.endswith("…"), s)
+            self.assertLessEqual(len(s), 120)
+            self.assertTrue(all(w == "wordy" for w in s[:-1].split()), s)           # no cut mid-word
+            make(tmp, "short-one", "Use when X, Y, Z")
+            _, out, _ = toc("--json", folder=tmp)
+            by = {e["name"]: e["sentence"] for e in json.loads(out)["toc"]["groups"][0]["entries"]}
+            self.assertEqual(by["short-one"], "Use when X, Y, Z")
+
+    def test_abbreviations_do_not_end_the_sentence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            make(tmp, "abbr", "Use for a PR, e.g. a hotfix. Then more.")
+            make(tmp, "abbr2", "Compare A vs. B and so on. Then more.")
+            make(tmp, "abbr3", "Lists files, etc. Capital after it. Then more.")
+            _, out, _ = toc("--json", folder=tmp)
+            by = {e["name"]: e["sentence"] for e in json.loads(out)["toc"]["groups"][0]["entries"]}
+            self.assertEqual(by["abbr"], "Use for a PR, e.g. a hotfix.")
+            self.assertEqual(by["abbr2"], "Compare A vs. B and so on.")
+            self.assertEqual(by["abbr3"], "Lists files, etc. Capital after it.")
+
+    def test_names_kind_prints_names_only(self):
+        code, out, _ = toc("--kind", "names")
+        self.assertEqual(code, 0)
+        self.assertNotIn(" — ", "\n".join(out.splitlines()[1:-1]))
+        self.assertIn("\ngoal-loop\n", out)
+
+    def test_description_kind_prints_whole_description(self):
+        _, out, _ = toc("--kind", "description")
+        line = next(ln for ln in out.splitlines() if ln.startswith("goal-loop — "))
+        self.assertEqual(line, "goal-loop — Run a coding agent headless in a bounded loop of fresh sessions until a check command exits 0 or a budget ends. "
+                               "Use for a task in a folder that needs more than a few tool calls.")
+
+    def test_folder_scope_lists_that_group_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            first, second = Path(tmp) / "first-root", Path(tmp) / "second-root"
+            make(first, "alpha-skill")
+            make(first, "beta-skill")
+            make(second, "gamma-skill")
+            code, out, _ = run("--only", str(first), "--only", str(second), "--toc")
+            self.assertIn("## first-root (2)", out)
+            self.assertIn("## second-root (1)", out)
+            code, out, _ = run("--only", str(first), "--only", str(second), "--toc", "second-root")
+            self.assertEqual(code, 0)
+            self.assertIn("gamma-skill", out)
+            self.assertNotIn("alpha-skill", out)
+            self.assertNotIn("## first-root", out)
+            self.assertTrue(out.splitlines()[0].startswith("table of contents: 1 skill in 1 folder"), out.splitlines()[0])
+
+    def test_two_different_skills_with_one_name(self):
+        with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
+            make(a, "configure", "Set up the telegram bot.")
+            make(b, "configure", "Set up the discord bot.")
+            code, out, _ = run("--only", a, "--only", b, "--toc")
+            self.assertEqual(len([ln for ln in out.splitlines() if ln.startswith("configure — ")]), 2)
+            code, out, err = run("--only", a, "--only", b, "--toc", "configure")
+            self.assertEqual(code, 1)
+            self.assertIn("2 skills are named 'configure'", err)
+            self.assertIn(str(Path(a) / "configure"), err)
+            self.assertIn(str(Path(b) / "configure"), err)
+
+    def test_merged_copies_print_one_row_with_also(self):
+        with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
+            make(a, "twin", "Does the twin thing.")
+            make(b, "twin", "Does the twin thing.")
+            _, out, _ = run("--only", a, "--only", b, "--toc")
+            rows = [ln for ln in out.splitlines() if ln.startswith("twin")]
+            self.assertEqual(len(rows), 1)
+            self.assertTrue(rows[0].endswith("(also at 1)"), rows[0])
+            _, out, _ = run("--only", a, "--only", b, "--toc", "--json")
+            entries = [e for g in json.loads(out)["toc"]["groups"] for e in g["entries"]]
+            self.assertEqual(len(entries), 1)
+            self.assertEqual(len(entries[0]["also"]), 1)
+
+    def test_off_marker(self):
+        mod = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            entries = []
+            for name, status, source, plugin in (("on-skill", "folder skill", "only x", None), ("off-skill", "plugin installed", "p@m", "p"),
+                                                 ("dis-skill", "plugin DISABLED", "q@m", "q")):
+                d = make(tmp, name, "Does it.")
+                entries.append(dict(name=name, description="Does it.", dir=d, source=source, status=status, rank=0, plugin=plugin, also=[]))
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                mod.toc(entries, "all", None, False)
+            rows = {ln.split(" — ")[0]: ln for ln in buf.getvalue().splitlines() if " — " in ln}
+            self.assertTrue(rows["off-skill"].endswith(" [off]"), rows["off-skill"])
+            self.assertTrue(rows["dis-skill"].endswith(" [off]"), rows["dis-skill"])
+            self.assertNotIn("[off]", rows["on-skill"])
+            self.assertIn("## p (1)", buf.getvalue())
+
+    def test_unknown_scope_exits_1(self):
+        code, out, err = toc("no-such-thing")
+        self.assertEqual((code, out), (1, ""))
+        self.assertIn("no skill, folder or path matches 'no-such-thing'", err)
+
+    def test_toc_with_task_exits_1(self):
+        code, _, err = toc("--task", "graphql")
+        self.assertEqual(code, 1)
+        self.assertIn("--toc goes alone or with --phrase, not with --task", err)
+
+    def test_toc_with_list_exits_1(self):
+        code, _, err = toc("--list")
+        self.assertEqual(code, 1)
+        self.assertIn("--toc goes alone or with --phrase, not with --list", err)
+
+    def test_toc_with_limit_top_for_exits_1(self):
+        for flag, val in (("--limit", "5"), ("--top", "3"), ("--for", "x")):
+            code, _, err = toc(flag, val)
+            self.assertEqual(code, 1, flag)
+            self.assertIn(f"--toc goes alone or with --phrase, not with {flag}", err)
+
+    def test_kind_without_toc_exits_1(self):
+        code, _, err = run("--only", str(FIXTURES), "--kind", "names")
+        self.assertEqual(code, 1)
+        self.assertIn("--kind needs --toc", err)
+
+    def test_headers_and_files_kinds_are_refused_until_their_tasks(self):
+        code, _, err = toc("--kind", "files")
+        self.assertEqual(code, 1)
+        self.assertIn("--kind", err)
+
+    def test_json_shape(self):
+        code, out, _ = toc("--json")
+        t = json.loads(out)["toc"]
+        self.assertEqual((t["scope"], t["level"], t["kind"], t["scanned"]), ("all", "all", "sentence", 18))
+        self.assertEqual(t["groups"][0]["group"], "skills")
+        e = t["groups"][0]["entries"][0]
+        self.assertEqual(sorted(e), ["also", "name", "off", "path", "sentence", "status"])
+        self.assertEqual((e["name"], e["status"], e["off"], e["also"]), ("accessibility", "folder skill", False, []))
+        self.assertTrue(e["path"].endswith("accessibility/SKILL.md"), e["path"])
+
+
+if __name__ == "__main__":
+    unittest.main()
