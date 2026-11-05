@@ -276,6 +276,98 @@ class SameSkillAgain(unittest.TestCase):
             self.assertIn("1 skill(s) contain it", out)
             self.assertIn("also at: only ", out)
 
+    def write(self, folder, name, description):
+        folder.mkdir(parents=True)
+        (folder / "SKILL.md").write_text(f"---\nname: {name}\ndescription: {description}\n---\n\n# {name}\n\nSteps.\n")
+
+    def test_two_different_skills_with_one_name_in_one_folder_both_show(self):
+        with tempfile.TemporaryDirectory() as a:
+            self.write(Path(a) / "k8s-deploy", "deploy", "Ship containers to kubernetes when crossing roads.")
+            self.write(Path(a) / "netlify-deploy", "deploy", "Publish a static site to netlify when crossing roads.")
+            res = self.run_phrase(a)
+            self.assertEqual(sorted(Path(c["path"]).parent.name for c in res["candidates"]), ["k8s-deploy", "netlify-deploy"])
+
+    def run_isolated(self, home, *args, config_dir=None):
+        """The finder with HOME (and config_dir) as its only config dirs and no roots file, so nothing of this machine is in the result.
+        It runs in an empty folder outside HOME: run in HOME, HOME/.claude/skills would be read as a project's skills too."""
+        env = {k: v for k, v in os.environ.items() if k != "CLAUDE_CONFIG_DIR"} | {"HOME": str(home), "SKILL_FINDER_ROOTS": str(Path(home) / "no-roots")}
+        if config_dir: env["CLAUDE_CONFIG_DIR"] = str(config_dir)
+        with tempfile.TemporaryDirectory() as cwd:
+            out = subprocess.run([sys.executable, str(FINDER), *args, "--json", "--limit", "40"], capture_output=True, text=True, env=env, cwd=cwd)
+        assert out.returncode == 0, out.stderr
+        return json.loads(out.stdout)
+
+    def plugin(self, base, plugin, skill, description):
+        (base / ".claude-plugin").mkdir(parents=True)
+        (base / ".claude-plugin" / "plugin.json").write_text(json.dumps({"name": plugin}))
+        self.write(base / "skills" / skill, skill, description)
+
+    def test_two_plugins_of_one_extra_root_keep_their_same_named_skills(self):
+        with tempfile.TemporaryDirectory() as home:
+            repo = Path(home) / "org-skills"
+            self.plugin(repo / "alpha", "alpha", "git-commit", "Write commit messages with a ticket prefix when crossing roads.")
+            self.plugin(repo / "beta", "beta", "git-commit", "Sign commits with gpg when crossing roads.")
+            res = self.run_isolated(home, "--phrase", "crossing roads", "--root", str(repo))
+            self.assertEqual(sorted(Path(c["path"]).parts[-4] for c in res["candidates"]), ["alpha", "beta"])
+
+    def test_two_cached_versions_of_one_plugin_are_still_one_skill(self):
+        with tempfile.TemporaryDirectory() as home:
+            cache = Path(home) / ".claude" / "plugins" / "cache" / "market" / "tools"
+            self.plugin(cache / "1.0.0", "tools", "configure", "Set up the bot when crossing roads.")
+            self.plugin(cache / "2.0.0", "tools", "configure", "Set up the bot, now with retries, when crossing roads.")
+            res = self.run_isolated(home, "--phrase", "crossing roads")
+            self.assertEqual([c["name"] for c in res["candidates"]], ["configure"])
+
+    def test_copies_of_a_plugin_without_plugin_json_are_still_one_skill(self):
+        with tempfile.TemporaryDirectory() as home:
+            plugins = Path(home) / ".claude" / "plugins"
+            self.write(plugins / "cache" / "market" / "docs" / "1.0" / "skills" / "pdf", "pdf", "Fill pdf forms when crossing roads.")
+            self.write(plugins / "cache" / "market" / "docs" / "2.0" / "skills" / "pdf", "pdf", "Fill and sign pdf forms when crossing roads.")
+            self.write(plugins / "marketplaces" / "market" / "docs" / "skills" / "pdf", "pdf", "Fill, sign and merge pdf forms when crossing roads.")
+            res = self.run_isolated(home, "--phrase", "crossing roads")
+            self.assertEqual([c["name"] for c in res["candidates"]], ["pdf"])
+
+    def test_two_plugins_without_plugin_json_in_one_marketplace_keep_their_same_named_skills(self):
+        with tempfile.TemporaryDirectory() as home:
+            market = Path(home) / ".claude" / "plugins" / "marketplaces" / "market"
+            self.write(market / "alpha" / "skills" / "configure", "configure", "Set up the telegram bot when crossing roads.")
+            self.write(market / "beta" / "skills" / "configure", "configure", "Set up the discord bot when crossing roads.")
+            res = self.run_isolated(home, "--phrase", "crossing roads")
+            self.assertEqual(sorted(Path(c["path"]).parts[-4] for c in res["candidates"]), ["alpha", "beta"])
+
+    def test_one_plugin_name_in_two_marketplaces_is_two_plugins(self):
+        with tempfile.TemporaryDirectory() as home:
+            cache = Path(home) / ".claude" / "plugins" / "cache"
+            self.plugin(cache / "east" / "tools" / "1.0", "tools", "configure", "Set up the telegram bot when crossing roads.")
+            self.plugin(cache / "west" / "tools" / "1.0", "tools", "configure", "Set up the discord bot when crossing roads.")
+            res = self.run_isolated(home, "--phrase", "crossing roads")
+            self.assertEqual(sorted(Path(c["path"]).parts[-6] for c in res["candidates"]), ["east", "west"])
+
+    def test_two_different_user_skills_with_one_name_both_show(self):
+        with tempfile.TemporaryDirectory() as home:
+            skills = Path(home) / ".claude" / "skills"
+            self.write(skills / "k8s-deploy", "deploy", "Ship containers to kubernetes when crossing roads.")
+            self.write(skills / "netlify-deploy", "deploy", "Publish a static site to netlify when crossing roads.")
+            res = self.run_isolated(home, "--phrase", "crossing roads")
+            self.assertEqual(sorted(Path(c["path"]).parent.name for c in res["candidates"]), ["k8s-deploy", "netlify-deploy"])
+
+    def test_a_user_skill_in_both_config_dirs_is_still_one_skill(self):
+        with tempfile.TemporaryDirectory() as home:
+            self.write(Path(home) / ".claude" / "skills" / "deploy", "deploy", "Ship containers when crossing roads.")
+            self.write(Path(home) / "second" / "skills" / "deploy", "deploy", "Ship containers to kubernetes when crossing roads.")
+            res = self.run_isolated(home, "--phrase", "crossing roads", config_dir=Path(home) / "second")
+            self.assertEqual([c["name"] for c in res["candidates"]], ["deploy"])
+
+    def test_enable_source_can_name_part_of_the_path(self):
+        with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as into:
+            self.write(Path(a) / "k8s-deploy", "deploy", "Ship containers to kubernetes when crossing roads.")
+            self.write(Path(a) / "netlify-deploy", "deploy", "Publish a static site to netlify when crossing roads.")
+            for pick, word in (("k8s-deploy", "kubernetes"), ("netlify-deploy", "netlify")):             # one of the two is the default pick
+                cmd = [sys.executable, str(FINDER), "--only", a, "--enable", "deploy", "--into", into, "--source", pick]
+                out = subprocess.run(cmd, capture_output=True, text=True)
+                self.assertEqual(out.returncode, 0, out.stderr)
+                self.assertIn(word, (Path(into) / ".claude" / "skills" / "deploy" / "SKILL.md").read_text())
+
 
 STUB = """import json, os, sys
 open(os.environ["STUB_COUNT"], "a").write("x")

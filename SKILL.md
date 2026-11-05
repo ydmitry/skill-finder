@@ -44,8 +44,9 @@ word of the phrase (a word held by none is not how any skill says it) and lists 
 Both scan user skills, project skills (`.claude/skills` up from the cwd) and every plugin's skills in each
 config dir (`~/.claude`, and `$CLAUDE_CONFIG_DIR` when set): enabled plugins, DISABLED plugins, installed-but-unlisted ones,
 and marketplace folders of plugins never installed. Each hit shows its state, source, path, the whole description (cut at 1,500 characters, and it says so), the
-lines that matched with `file:line`, and its reference files with their first heading. Identical copies are shown
-once, with "also at". `--list` prints the whole inventory. `--only DIR` (repeatable) scans `DIR/<name>/SKILL.md`
+lines that matched with `file:line`, and its reference files with their first heading. Copies of one skill are shown
+once, with "also at" where their labels differ: identical files, versions of one plugin, a user skill in both config folders,
+or the same name with the same description. Two different skills that share a name are both shown, unless they sit in one plugin. `--list` prints the whole inventory. `--only DIR` (repeatable) scans `DIR/<name>/SKILL.md`
 alone, nothing from the config dirs or the project: for tests and fixture folders. A file
 `scripts/roots` (one folder per line, `#` comments; copy `scripts/roots.example`; machine-local, not committed) adds more
 folders, like `--root`. The ranking is by keywords, so it finds candidates; it does not decide. A `LOW CONFIDENCE` line
@@ -91,7 +92,7 @@ python3 ~/.claude/skills/skill-finder/scripts/find_skills.py --remove --into DIR
 ```
 
 This works for a disabled or never-installed plugin's skill, because a session started in DIR sees the copy as a
-project skill. Nothing global changes: it never edits `settings.json`. Use a run folder or worktree for DIR,
+project skill. When two skills share a name, `--source` picks one by part of its source label or its path. Nothing global changes: it never edits `settings.json`. Use a run folder or worktree for DIR,
 not a repo the person works in. If it prints `WARNING: refers to CLAUDE_PLUGIN_ROOT`, that skill's scripts may
 not work from the copy; say so in the report. Turning a plugin on for every session is the person's call
 (`enabledPlugins` in settings); never do it unasked.

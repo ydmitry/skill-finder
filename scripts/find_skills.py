@@ -155,12 +155,18 @@ def collect(extra_roots, only=()):
         if h in by_hash: by_hash[h]["also"].append(f"{e['source']} [{e['status']}]"); continue
         e["also"] = []; by_hash[h] = e; out.append(e)
     # The same skill again with other text (an older cached version, a copy in the second config folder, a user copy of a plugin
-    # skill): same name and either the same plugin or the same description. The best-ranked copy stays and names the rest.
-    # Two different skills that merely share a name (a "configure" in each of three plugins) stay apart.
+    # skill): same name and either the same plugin, the same user skills folder name, or the same description. The best-ranked copy
+    # stays and names the rest. Two different skills that merely share a name stay apart: a "configure" in each of three plugins,
+    # and two of one name under one --only folder, roots folder or project, whose label names a folder, not one skill's copies.
     def words(s): return " ".join(s.split()).lower()
+    def lineage(e):
+        if e["source"] == "user": return f"user {e['dir'].name}"
+        if e["plugin"] == "?": return group_of(e)                            # no plugin.json: its folder in the cache or the marketplace
+        return e["source"] if e["plugin"] else None
     kept, merged = {}, []
     for e in out:
-        twin = next((k for k in kept.get(e["name"], []) if k["source"] == e["source"] or (words(e["description"]) and words(k["description"]) == words(e["description"]))), None)
+        twin = next((k for k in kept.get(e["name"], []) if (lineage(e) and lineage(k) == lineage(e))
+                     or (words(e["description"]) and words(k["description"]) == words(e["description"]))), None)
         if twin:
             here = f"{twin['source']} [{twin['status']}]"
             for place in [f"{e['source']} [{e['status']}]", *e["also"]]:
@@ -645,10 +651,10 @@ def enable(entries, names, into, source):
     manifest = root / ".skill-finder.json"
     done = json.loads(manifest.read_text()) if manifest.exists() else {}
     for n in names:
-        cands = [e for e in entries if e["name"] == n and (not source or source in e["source"])]
+        cands = [e for e in entries if e["name"] == n and (not source or source in e["source"] or source in str(e["dir"]))]
         if not cands: print(f"no skill named {n}", file=sys.stderr); continue
-        if len(cands) > 1: print(f"{n}: {len(cands)} different skills share this name; took the first ({cands[0]['source']}); "
-                                 f"others: {', '.join(c['source'] for c in cands[1:])}; use --source to choose", file=sys.stderr)
+        if len(cands) > 1: print(f"{n}: {len(cands)} different skills share this name; took the first ({cands[0]['dir']}); "
+                                 f"others: {', '.join(str(c['dir']) for c in cands[1:])}; use --source with part of its source or path to choose", file=sys.stderr)
         e, dest = cands[0], root / n
         if dest.exists() and n not in done: print(f"{dest} exists and is not ours; left alone", file=sys.stderr); continue
         shutil.rmtree(dest, ignore_errors=True)
