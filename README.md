@@ -79,7 +79,8 @@ and look at whether a skill it listed is invoked afterwards.
 In short: it helps Claude find and open skills it could not otherwise see, and adds little for skills Claude already lists.
 The tests measure whether Claude ran the finder and opened the skill, not whether the work came out better. They were run
 with Claude Haiku and Sonnet, their harness is not published (it is not part of this repository), and they are small: read
-them as directions, not rates.
+them as directions, not rates. The one test that needs no model is published: its scripts are in `bench/skillret/` (the
+last paragraph of this section).
 
 **Skills you have not installed** are the finder's main job. Ten skills from public repos that were not installed, and
 requests written without any word of the skill's name or description (rejected by a check, then confirmed blind by a second
@@ -112,6 +113,16 @@ harm. Name-only skills whose names say nothing are untested. For skills that kee
 the right one in 23 and 25 of 25 runs, a difference of one task (3 of 5 to 5 of 5). So it pays off most when your org's
 skills are on disk (a marketplace or a cloned repo) but not installed.
 
+**On a public benchmark, with no model.** SkillRet ([arXiv 2605.05726](https://arxiv.org/abs/2605.05726)) asks a ranker to
+find the skills each of 4,392 requests needs among 6,006 public SKILL.md files. The finder's `--task` ranker scores NDCG@10
+58.78 (how high the needed skills sit in the first ten, out of 100), against 51.69 for the benchmark's own BM25 keyword
+baseline, whose rerun here gives the paper's numbers exactly; off-the-shelf embedding models in the paper reach 70.26. The lead
+over BM25 comes from requests that need two or three skills; on the 2,143 that need one, there is no measurable difference.
+The requests were written from each skill's name and description, which suits the weight the finder puts on the description.
+This scores the ranker alone, given the whole request: not the two- or three-word `--phrase` lookups the `CLAUDE.md` block
+uses, and not whether Claude runs the finder and opens what it finds. [`bench/skillret/`](bench/skillret/) reruns it on a
+laptop in about a quarter of an hour, with no API key.
+
 ## Commands
 
 ```
@@ -123,7 +134,12 @@ python3 scripts/find_skills.py --phrase "..." --toc   # the hits as sections
 python3 scripts/find_skills.py --enable NAME --into DIR                 # copy a skill into DIR/.claude/skills for one run
 ```
 
-`--phrase` is the recommended lookup and the one the `CLAUDE.md` block uses; `--toc` is an optional way to browse.
+`--phrase` is the recommended lookup and the one the `CLAUDE.md` block uses; `--toc` is an optional way to browse. In an
+unpublished pick-only test (48 requests over one machine's 264 skills; Sonnet read a whole table and named up to three skills),
+no table put the right skill among its picks more often than `--phrase` output did (43 of 48). The table with whole
+descriptions matched it, 43, at about seven times the cost; the tables with names, first sentences (the default) or headers
+had 33, 34 and 40.
+
 `SKILL.md` is the skill: it tells Claude how to search, read the best matches and their reference files, and report which
 skill to use and how. `scripts/find_skills.py` is the finder.
 
