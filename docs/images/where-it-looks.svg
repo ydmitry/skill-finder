@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 104 1366 630" role="img"
+     aria-label="Claude's skill list shows bundled and installed skills; skill-finder also searches disabled plugins, marketplace plugins you never installed, and skill repos you list in scripts/roots.">
+  <!-- spec-items: tile1 Bundled with Claude Code list✓ finder✗ (+ "built into the app") | tile2 Installed: your user and project skills, enabled plugins list✓ finder✓ | tile3 Disabled plugins list✗ finder✓ | tile4 Plugins in a marketplace you added but never installed list✗ finder✓ | tile5 Skill repos you cloned and listed in scripts/roots list✗ finder✓ | tile6 Not on disk: plugins a marketplace only links to, repos you never cloned list✗ finder✗ | row labels "Claude's list" / "skill-finder" | bracket-above tiles1-2 "Claude's skill list" | bracket-below tiles2-5 "skill-finder searches" | wall tile5|tile6 "on your disk | not on disk" | glyphs: app window, user folder, switched-off plug, storefront, git branch, cloud | takeaway -->
+  <!-- geometry: W=1366 PAD=64 HERO_H=130; row-label anchor x=204 (end); tiles y=256 h=244 widths 176/166/124/154/196/162 gap=16 wall-gap=40 -> x 220/412/594/734/904/1140, wall x=1120; glyph 28x28 at (tile.x+12, 270); text x=tile.x+12 baselines 332+30k; top band label y=172 bracket y=188/198 marks cy=222; bottom marks cy=524 bracket y=558/568 labels y=600; tint x=402..1110 y=150..616; footer rule y=654 takeaway y=696 H=734 -->
+  <defs>
+    <pattern id="f1-grid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M24 0 H0 V24" fill="none" stroke="#e9ecf2" stroke-width="1"/>
+    </pattern>
+    <symbol id="f1-yes" viewBox="0 0 34 34">
+      <circle cx="17" cy="17" r="17" fill="#e6f0ea"/>
+      <path d="M10 18 l5 5 l10 -12" fill="none" stroke="#3f7d5c" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="f1-no" viewBox="0 0 34 34">
+      <circle cx="17" cy="17" r="17" fill="#f6e2df"/>
+      <path d="M11 11 l12 12 M23 11 l-12 12" fill="none" stroke="#b4483c" stroke-width="3.2" stroke-linecap="round"/>
+    </symbol>
+  </defs>
+
+  <rect x="0" y="0" width="1366" height="734" fill="#ffffff"/>
+
+
+  <!-- decoration: on-disk zone tint (from tile 2) + the wall (under everything else) -->
+  <g id="f1-decor">
+    <rect x="402" y="150" width="708" height="466" rx="12" fill="#f7f8fa"/>
+    <line x1="1120" y1="150" x2="1120" y2="616" stroke="#8b93a3" stroke-width="2" stroke-dasharray="8 8"/>
+  </g>
+
+  <g font-family="&quot;Space Grotesk&quot;,&quot;Avenir Next&quot;,&quot;Segoe UI&quot;,ui-sans-serif,sans-serif" font-size="24" fill="#161920">
+    <!-- wall labels -->
+    <text x="1108" y="172" text-anchor="end" fill="#5f6675">on your disk</text>
+    <text x="1132" y="172" text-anchor="start" fill="#5f6675">not on disk</text>
+
+    <!-- bracket above tiles 1-2: Claude's skill list -->
+    <text x="399" y="172" text-anchor="middle" font-weight="600" fill="#5f6675">Claude's skill list</text>
+    <path d="M220 198 V188 H578 V198" fill="none" stroke="#5f6675" stroke-width="2"/>
+
+    <!-- row labels, right-anchored on one line -->
+    <text x="204" y="222" dy=".35em" text-anchor="end" font-weight="600" fill="#5f6675">Claude's list</text>
+    <text x="204" y="524" dy=".35em" text-anchor="end" font-weight="600" fill="#2f5fd0">skill-finder</text>
+
+    <!-- list marks, centered over each tile -->
+    <use href="#f1-yes" x="291" y="205" width="34" height="34"/>
+    <use href="#f1-yes" x="478" y="205" width="34" height="34"/>
+    <use href="#f1-no"  x="639" y="205" width="34" height="34"/>
+    <use href="#f1-no"  x="794" y="205" width="34" height="34"/>
+    <use href="#f1-no"  x="985" y="205" width="34" height="34"/>
+    <use href="#f1-no"  x="1204" y="205" width="34" height="34"/>
+
+    <!-- tiles -->
+    <g id="f1-tile1">
+      <rect x="220" y="256" width="176" height="244" rx="10" fill="#ffffff" stroke="#e2e5ec" stroke-width="1.5"/>
+      <g transform="translate(232,270)" fill="none" stroke="#5f6675" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="4" width="24" height="20" rx="3"/>
+        <path d="M2 10 H26 M6 7 h.01 M10 7 h.01"/>
+      </g>
+      <text x="232" y="332">Bundled with<tspan x="232" dy="30">Claude Code</tspan></text>
+    </g>
+    <g id="f1-tile2">
+      <rect x="412" y="256" width="166" height="244" rx="10" fill="#ffffff" stroke="#e2e5ec" stroke-width="1.5"/>
+      <g transform="translate(424,270)" fill="none" stroke="#5f6675" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M2 7 h8 l3 3 h13 v14 H2 z"/>
+        <path d="M11.5 14.5 a2.5 2.5 0 1 0 5 0 a2.5 2.5 0 1 0 -5 0 M9 22 a5 5 0 0 1 10 0"/>
+      </g>
+      <text x="424" y="332">Installed:<tspan x="424" dy="30">your user and</tspan><tspan x="424" dy="30">project skills,</tspan><tspan x="424" dy="30">enabled</tspan><tspan x="424" dy="30">plugins</tspan></text>
+    </g>
+    <g id="f1-tile3">
+      <rect x="594" y="256" width="124" height="244" rx="10" fill="#eef3fd" stroke="#2f5fd0" stroke-width="1.5"/>
+      <g transform="translate(606,270)" fill="none" stroke="#2f5fd0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10 3 V8 M18 3 V8 M6 8 H22 V14 a8 8 0 0 1 -16 0 Z M14 22 V26"/>
+        <path d="M4 25 L24 4"/>
+      </g>
+      <text x="606" y="332">Disabled<tspan x="606" dy="30">plugins</tspan></text>
+    </g>
+    <g id="f1-tile4">
+      <rect x="734" y="256" width="154" height="244" rx="10" fill="#eef3fd" stroke="#2f5fd0" stroke-width="1.5"/>
+      <g transform="translate(746,270)" fill="none" stroke="#2f5fd0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 3 H25 L27 9 H1 Z M4 9 V25 H24 V9 M11 25 V17 H17 V25"/>
+      </g>
+      <text x="746" y="332">Plugins in a<tspan x="746" dy="30">marketplace</tspan><tspan x="746" dy="30">you added</tspan><tspan x="746" dy="30">but never</tspan><tspan x="746" dy="30">installed</tspan></text>
+    </g>
+    <g id="f1-tile5">
+      <rect x="904" y="256" width="196" height="244" rx="10" fill="#eef3fd" stroke="#2f5fd0" stroke-width="1.5"/>
+      <g transform="translate(916,270)" fill="none" stroke="#2f5fd0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 5 a3 3 0 1 0 6 0 a3 3 0 1 0 -6 0 M4 23 a3 3 0 1 0 6 0 a3 3 0 1 0 -6 0 M18 9 a3 3 0 1 0 6 0 a3 3 0 1 0 -6 0"/>
+        <path d="M7 8 V20 M21 12 C21 17 7 15 7 20"/>
+      </g>
+      <text x="916" y="332">Skill repos<tspan x="916" dy="30">you cloned</tspan><tspan x="916" dy="30">and listed in</tspan><tspan x="916" dy="30" font-family="&quot;IBM Plex Mono&quot;,ui-monospace,&quot;SF Mono&quot;,Menlo,monospace" font-size="22">scripts/roots</tspan></text>
+    </g>
+    <g id="f1-tile6">
+      <rect x="1140" y="256" width="162" height="244" rx="10" fill="#ffffff" stroke="#8b93a3" stroke-width="1.5" stroke-dasharray="6 5"/>
+      <g transform="translate(1152,270)" fill="none" stroke="#5f6675" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M8 23 H20 a5.5 5.5 0 0 0 .6 -11 A7 7 0 0 0 7.5 10.5 A6.3 6.3 0 0 0 8 23 Z" stroke-dasharray="3 3"/>
+      </g>
+      <text x="1152" y="332">Not on disk:<tspan x="1152" dy="30">plugins a</tspan><tspan x="1152" dy="30">marketplace</tspan><tspan x="1152" dy="30">only links to,</tspan><tspan x="1152" dy="30">repos you</tspan><tspan x="1152" dy="30">never cloned</tspan></text>
+    </g>
+
+    <!-- finder marks, centered under each tile -->
+    <use href="#f1-no"  x="291" y="507" width="34" height="34"/>
+    <use href="#f1-yes" x="478" y="507" width="34" height="34"/>
+    <use href="#f1-yes" x="639" y="507" width="34" height="34"/>
+    <use href="#f1-yes" x="794" y="507" width="34" height="34"/>
+    <use href="#f1-yes" x="985" y="507" width="34" height="34"/>
+    <use href="#f1-no"  x="1204" y="507" width="34" height="34"/>
+
+    <!-- bracket below tiles 2-5: skill-finder searches (the signature); tile 1's note shares its baseline -->
+    <path d="M412 558 V568 H1100 V558" fill="none" stroke="#2f5fd0" stroke-width="3"/>
+    <text x="756" y="600" text-anchor="middle" font-weight="600" fill="#2f5fd0">skill-finder searches</text>
+
+    <!-- footer -->
+    <line x1="64" y1="654" x2="1302" y2="654" stroke="#e2e5ec" stroke-width="1"/>
+    <text x="64" y="696" font-size="26">The finder's job is the middle: skills on your disk that Claude's list does not show.</text>
+  </g>
+</svg>

@@ -2,6 +2,11 @@
 
 **Maybe someone in your org already wrote a skill for this.**
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/situation-dark.png">
+  <img src="docs/images/situation.png" alt="A developer asks Claude Code to write release notes. A teammate already wrote a release-notes skill, but it sits in a team repo that was never installed, so Claude can't see it. With skill-finder, Claude looks it up, finds the team's skill and reads it before writing.">
+</picture>
+
 Your company keeps Claude Code skills in a few repos or plugin marketplaces, or you added a marketplace once and forgot what
 is in it. You haven't read them all, and you won't install them all. But for the task in front of you, one may already
 exist. skill-finder searches every skill on your machine (installed, disabled, or never installed but shipped inside a
@@ -9,6 +14,11 @@ marketplace Claude Code cloned) plus any skill repo you have cloned and listed i
 contain the words Claude looks up, each with its path and the line that matched. Claude can then read the one that fits, or
 you can copy it into a folder you start a fresh session in. It never edits `settings.json`; the only global change is the
 `CLAUDE.md` lines you add.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/where-it-looks-dark.png">
+  <img src="docs/images/where-it-looks.png" alt="Claude's skill list shows bundled and installed skills; skill-finder also searches disabled plugins, marketplace plugins you never installed, and skill repos you list in scripts/roots.">
+</picture>
 
 Claude will not reach for the finder by itself, so it comes with a short instruction for your `CLAUDE.md` (below). It pays
 off for skills Claude cannot see; for skills Claude already lists, the tests found little gain.
@@ -151,6 +161,11 @@ The requests were written from each skill's name and description, which suits th
 This scores the ranker alone, given the whole request: not the two- or three-word `--phrase` lookups the `CLAUDE.md` block
 uses, and not whether Claude runs the finder and opens what it finds. [`bench/skillret/`](bench/skillret/) reruns it on a
 laptop in about a quarter of an hour, with no API key.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/skillret-benchmark-dark.png">
+  <img src="docs/images/skillret-benchmark.png" alt="On the public SkillRet benchmark, the finder's keyword ranking scores above the BM25 keyword baseline (51.69) and below the best embedding model in the paper (70.26), which needs a model.">
+</picture>
 
 ## Commands
 

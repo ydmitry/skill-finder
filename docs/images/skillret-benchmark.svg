@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 104 1366 652" role="img"
+     aria-label="On the public SkillRet benchmark, the finder's keyword ranking scores above the BM25 keyword baseline (51.69) and below the best embedding model in the paper (70.26), which needs a model.">
+  <!-- spec-items: subtitle "SkillRet, a public benchmark (arXiv 2605.05726): 4,392 requests, 6,006 public SKILL.md files" | scale 0-100 ticks every 10 | zone "no model" | zone "needs a model" | BM25 keyword baseline 51.69 | skill-finder ‑‑task 58.78 (accent marker; two ASCII hyphens in the drawn text) + "whole request, not a phrase" | embedding models in the SkillRet paper, up to 70.26 | caption "NDCG@10: how high the needed skills sit in the first ten, out of 100" | context "The lead over BM25 comes from requests that need two or three skills; on one-skill requests there is no measurable difference." | note "Scores the ranker on whole requests, not the short phrase lookups Claude runs." | takeaway -->
+  <!-- geometry: HERO_H=130; subtitle y=166; axis x 64..1302 = 1238 px for 0..100 -> 12.38 px/unit; 51.69 -> 704, 58.78 -> 792, 70.26 -> 934; ticks x = 64 + 123.8k; lane1 y=186 h=120 dots cy=236; lane2 y=310 h=120 dot cy=370; no-model stems solid to 306 then dashed 310..454; axis y=454 labels y=486; caption 530; context 584/614; note 650; footer rule 680 takeaway 720 H=756 -->
+  <defs>
+    <pattern id="f4-grid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M24 0 H0 V24" fill="none" stroke="#e9ecf2" stroke-width="1"/>
+    </pattern>
+    <pattern id="f4-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#e2e5ec" stroke-width="1.4"/>
+    </pattern>
+  </defs>
+
+  <rect x="0" y="0" width="1366" height="756" fill="#ffffff"/>
+
+
+  <!-- zones (decoration, under the markers) -->
+  <g id="f4-zones">
+    <rect x="64" y="186" width="1238" height="120" rx="10" fill="#f7f8fa" stroke="#e2e5ec" stroke-width="1"/>
+    <rect x="64" y="310" width="1238" height="120" rx="10" fill="#ffffff" stroke="#e2e5ec" stroke-width="1"/>
+    <rect x="64" y="310" width="1238" height="120" rx="10" fill="url(#f4-hatch)"/>
+  </g>
+
+  <!-- axis: 0..100, a tick every 10 -->
+  <g id="f4-axis" stroke="#5f6675" stroke-width="2" fill="none">
+    <line x1="64" y1="454" x2="1302" y2="454"/>
+    <path d="M64 454 V464 M187.8 454 V464 M311.6 454 V464 M435.4 454 V464 M559.2 454 V464 M683 454 V464 M806.8 454 V464 M930.6 454 V464 M1054.4 454 V464 M1178.2 454 V464 M1302 454 V464"/>
+  </g>
+
+  <!-- marker stems: solid inside the marker's own lane, dashed grey through the other lane down to the axis (exact value) -->
+  <g id="f4-stems" fill="none">
+    <line x1="704" y1="236" x2="704" y2="306" stroke="#5f6675" stroke-width="2"/>
+    <line x1="704" y1="310" x2="704" y2="454" stroke="#8b93a3" stroke-width="1.5" stroke-dasharray="4 4"/>
+    <line x1="792" y1="236" x2="792" y2="306" stroke="#2f5fd0" stroke-width="3"/>
+    <line x1="792" y1="310" x2="792" y2="454" stroke="#8b93a3" stroke-width="1.5" stroke-dasharray="4 4"/>
+    <line x1="934" y1="370" x2="934" y2="454" stroke="#5f6675" stroke-width="2"/>
+  </g>
+
+  <g font-family="&quot;Space Grotesk&quot;,&quot;Avenir Next&quot;,&quot;Segoe UI&quot;,ui-sans-serif,sans-serif" font-size="24" fill="#161920">
+    <!-- subtitle -->
+    <text x="64" y="166" fill="#5f6675">SkillRet, a public benchmark (arXiv 2605.05726): 4,392 requests, 6,006 public SKILL.md files</text>
+
+    <!-- zone labels -->
+    <text x="80" y="218" font-weight="600" fill="#5f6675">no model</text>
+    <text x="80" y="342" font-weight="600" fill="#5f6675">needs a model</text>
+
+    <!-- BM25: dot from top-left box (695,227) d=18 -->
+    <g id="f4-bm25">
+      <circle cx="704" cy="236" r="9" fill="#5f6675"/>
+      <text x="686" y="230" text-anchor="end" font-weight="600" fill="#5f6675">BM25 keyword baseline</text>
+      <text x="686" y="262" text-anchor="end" font-family="&quot;IBM Plex Mono&quot;,ui-monospace,&quot;SF Mono&quot;,Menlo,monospace" font-size="26" font-weight="700" fill="#5f6675">51.69</text>
+    </g>
+
+    <!-- skill-finder: the accent marker (signature); dot from top-left box (780,224) d=24 with a bg ring -->
+    <g id="f4-finder">
+      <circle cx="792" cy="236" r="12" fill="#2f5fd0" stroke="#ffffff" stroke-width="3"/>
+      <text x="810" y="230" font-weight="600" fill="#2f5fd0">skill-finder --task</text>
+      <text x="810" y="262" font-family="&quot;IBM Plex Mono&quot;,ui-monospace,&quot;SF Mono&quot;,Menlo,monospace" font-size="26" font-weight="700" fill="#2f5fd0">58.78</text>
+      <text x="810" y="292" fill="#5f6675">whole request, not a phrase</text>
+    </g>
+
+    <!-- embedding models: dot from top-left box (925,361) d=18 -->
+    <g id="f4-embed">
+      <circle cx="934" cy="370" r="9" fill="#5f6675"/>
+      <text x="952" y="350" font-weight="600" fill="#5f6675">embedding models in the<tspan x="952" dy="30">SkillRet paper, up to</tspan></text>
+      <text x="952" y="414" font-family="&quot;IBM Plex Mono&quot;,ui-monospace,&quot;SF Mono&quot;,Menlo,monospace" font-size="26" font-weight="700" fill="#5f6675">70.26</text>
+    </g>
+
+    <!-- tick labels -->
+    <g font-family="&quot;IBM Plex Mono&quot;,ui-monospace,&quot;SF Mono&quot;,Menlo,monospace" font-size="22" fill="#8b93a3" text-anchor="middle">
+      <text x="64" y="486" text-anchor="start">0</text>
+      <text x="187.8" y="486">10</text>
+      <text x="311.6" y="486">20</text>
+      <text x="435.4" y="486">30</text>
+      <text x="559.2" y="486">40</text>
+      <text x="683" y="486">50</text>
+      <text x="806.8" y="486">60</text>
+      <text x="930.6" y="486">70</text>
+      <text x="1054.4" y="486">80</text>
+      <text x="1178.2" y="486">90</text>
+      <text x="1302" y="486" text-anchor="end">100</text>
+    </g>
+
+    <text x="64" y="530" fill="#5f6675">NDCG@10: how high the needed skills sit in the first ten, out of 100</text>
+    <text x="64" y="584">The lead over BM25 comes from requests that need two or three skills;<tspan x="64" dy="30">on one-skill requests there is no measurable difference.</tspan></text>
+    <text x="64" y="650" fill="#5f6675">Scores the ranker on whole requests, not the short phrase lookups Claude runs.</text>
+
+    <!-- footer -->
+    <line x1="64" y1="680" x2="1302" y2="680" stroke="#e2e5ec" stroke-width="1"/>
+    <text x="64" y="720" font-size="26">Above BM25, with no model either; the best embedding model in the paper scores higher.</text>
+  </g>
+</svg>

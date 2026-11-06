@@ -1,0 +1,148 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 104 1366 651" role="img"
+     aria-label="A developer asks Claude Code to write release notes. A teammate already wrote a release-notes skill, but it sits in a team repo that was never installed, so Claude can't see it. With skill-finder, Claude looks it up, finds the team's skill and reads it before writing.">
+  <!-- edges: f0-release2.L → f0-card2.R -->
+  <!-- spec-items: row1 "Today" | terminal "> write the release notes for v2.0" | card "a draft from scratch" (grey lines) | shelf "your team's skill repo": deploy-checklist, incident-report, release-notes (+ sticker "written by a teammate"), api-style-guide, db-migration | dashed wall "never installed: Claude can't see it", nothing crosses in row 1 | row2 "With skill-finder" | same terminal + "● find_skills.py ‑‑phrase "release notes"" (two ASCII hyphens in the drawn text) | magnifier + accent beam through the wall lighting release-notes | return arrow to card "Claude reads the team's skill, then writes" (accent heading ticks) | takeaway -->
+  <!-- geometry: W=1366 PAD=64 HERO_H=130; rows S1=144 S2=420 (gap 38, wall label baseline 409); row label x=64 and shelf header x=924 share baseline S+22; terminal x=240 w=580, top S+43, title bar 24, mono baselines T+52+32i (row1 h=66, row2 h=98, command line centre S+120); card x=240 w=450 h=74 at terminal bottom+24 (row1 277, row2 585), page glyph 44x54 at (256, card+10), label x=316; wall x=872 y 144..659 dashed; shelf x=924 w=378: folders top S+36/+70/+104(h58)/+170/+204, h=26, tab 48x12 at top-6, name x=940, sticker (940, top+28, 272x26), plank S+235; beam: lens centre (840,540) r=11, wedge 851..922, 529..551 at the lens to 524..560 at the folder, line y=540; return M924 570 H898 V622 H693 (card2.R = 690, +3); footer rule 679, takeaway 719, H=755 -->
+  <defs>
+    <pattern id="f0-grid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M24 0 H0 V24" fill="none" stroke="#e9ecf2" stroke-width="1"/>
+    </pattern>
+    <marker id="f0-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#2f5fd0"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1366" height="755" fill="#ffffff"/>
+
+
+  <!-- decoration first: the wall, then the beam that cuts through it (row 2 only) -->
+  <g id="f0-wall">
+    <line x1="872" y1="144" x2="872" y2="659" stroke="#8b93a3" stroke-width="2" stroke-dasharray="8 8"/>
+  </g>
+  <g id="f0-beam">
+    <polygon points="851,529 922,524 922,560 851,551" fill="#eef3fd"/>
+    <line x1="851" y1="540" x2="922" y2="540" stroke="#2f5fd0" stroke-width="4" stroke-linecap="round"/>
+  </g>
+
+  <g font-family="&quot;Space Grotesk&quot;,&quot;Avenir Next&quot;,&quot;Segoe UI&quot;,ui-sans-serif,sans-serif" font-size="24" fill="#161920">
+    <!-- wall label, haloed over the dashes, between the rows -->
+    <text x="856" y="409" text-anchor="end" fill="#5f6675" paint-order="stroke" stroke="#ffffff" stroke-width="10" stroke-linejoin="round">never installed: Claude can't see it</text>
+
+    <!-- ===== row 1: Today ===== -->
+    <text x="64" y="166" font-weight="600" fill="#5f6675">Today</text>
+
+    <!-- terminal 1 -->
+    <g id="f0-term1">
+      <rect x="240" y="187" width="580" height="66" rx="10" fill="#f7f8fa" stroke="#e2e5ec" stroke-width="1.5"/>
+      <line x1="240" y1="211" x2="820" y2="211" stroke="#e2e5ec" stroke-width="1"/>
+      <circle cx="259" cy="199" r="5" fill="#8b93a3"/>
+      <circle cx="275" cy="199" r="5" fill="#8b93a3"/>
+      <circle cx="291" cy="199" r="5" fill="#8b93a3"/>
+      <text x="258" y="239" font-family="&quot;IBM Plex Mono&quot;,ui-monospace,&quot;SF Mono&quot;,Menlo,monospace" font-size="22">&gt; write the release notes for v2.0</text>
+    </g>
+
+    <!-- card 1: a draft from scratch -->
+    <g id="f0-card1">
+      <rect x="240" y="277" width="450" height="74" rx="10" fill="#ffffff" stroke="#e2e5ec" stroke-width="1.5"/>
+      <path d="M256 287 H288 L300 299 V341 H256 Z" fill="#ffffff" stroke="#8b93a3" stroke-width="1.5" stroke-linejoin="round"/>
+      <path d="M288 287 V299 H300" fill="none" stroke="#8b93a3" stroke-width="1.5" stroke-linejoin="round"/>
+      <path d="M264 307 H292 M264 315 H286 M264 323 H292 M264 331 H282" fill="none" stroke="#8b93a3" stroke-width="2" stroke-linecap="round"/>
+      <text x="316" y="314" dy=".35em" fill="#5f6675">a draft from scratch</text>
+    </g>
+
+    <!-- shelf 1 -->
+    <g id="f0-shelf1">
+      <text x="924" y="166" fill="#5f6675">your team's skill repo</text>
+      <g font-family="&quot;IBM Plex Mono&quot;,ui-monospace,&quot;SF Mono&quot;,Menlo,monospace" font-size="22">
+        <rect x="924" y="174" width="48" height="12" rx="3" fill="#f7f8fa" stroke="#e2e5ec" stroke-width="1.5"/>
+        <rect x="924" y="180" width="378" height="26" rx="4" fill="#f7f8fa" stroke="#e2e5ec" stroke-width="1.5"/>
+        <text x="940" y="193" dy=".35em">deploy-checklist</text>
+
+        <rect x="924" y="208" width="48" height="12" rx="3" fill="#f7f8fa" stroke="#e2e5ec" stroke-width="1.5"/>
+        <rect x="924" y="214" width="378" height="26" rx="4" fill="#f7f8fa" stroke="#e2e5ec" stroke-width="1.5"/>
+        <text x="940" y="227" dy=".35em">incident-report</text>
+
+        <rect x="924" y="242" width="48" height="12" rx="3" fill="#f7f8fa" stroke="#e2e5ec" stroke-width="1.5"/>
+        <rect id="f0-release1" x="924" y="248" width="378" height="58" rx="4" fill="#f7f8fa" stroke="#e2e5ec" stroke-width="1.5"/>
+        <text x="940" y="264" dy=".35em">release-notes</text>
+        <rect x="940" y="276" width="272" height="26" rx="13" fill="#ffffff" stroke="#e2e5ec" stroke-width="1.5"/>
+        <text x="952" y="289" dy=".35em" font-family="&quot;Space Grotesk&quot;,&quot;Avenir Next&quot;,&quot;Segoe UI&quot;,ui-sans-serif,sans-serif" font-size="24" fill="#5f6675">written by a teammate</text>
+
+        <rect x="924" y="308" width="48" height="12" rx="3" fill="#f7f8fa" stroke="#e2e5ec" stroke-width="1.5"/>
+        <rect x="924" y="314" width="378" height="26" rx="4" fill="#f7f8fa" stroke="#e2e5ec" stroke-width="1.5"/>
+        <text x="940" y="327" dy=".35em">api-style-guide</text>
+
+        <rect x="924" y="342" width="48" height="12" rx="3" fill="#f7f8fa" stroke="#e2e5ec" stroke-width="1.5"/>
+        <rect x="924" y="348" width="378" height="26" rx="4" fill="#f7f8fa" stroke="#e2e5ec" stroke-width="1.5"/>
+        <text x="940" y="361" dy=".35em">db-migration</text>
+      </g>
+      <line x1="924" y1="379" x2="1302" y2="379" stroke="#8b93a3" stroke-width="3" stroke-linecap="round"/>
+    </g>
+
+    <!-- ===== row 2: With skill-finder ===== -->
+    <text x="64" y="442" font-weight="600" fill="#2f5fd0">With skill-finder</text>
+
+    <!-- terminal 2: one more line -->
+    <g id="f0-term2">
+      <rect x="240" y="463" width="580" height="98" rx="10" fill="#f7f8fa" stroke="#e2e5ec" stroke-width="1.5"/>
+      <line x1="240" y1="487" x2="820" y2="487" stroke="#e2e5ec" stroke-width="1"/>
+      <circle cx="259" cy="475" r="5" fill="#8b93a3"/>
+      <circle cx="275" cy="475" r="5" fill="#8b93a3"/>
+      <circle cx="291" cy="475" r="5" fill="#8b93a3"/>
+      <text x="258" y="515" font-family="&quot;IBM Plex Mono&quot;,ui-monospace,&quot;SF Mono&quot;,Menlo,monospace" font-size="22">&gt; write the release notes for v2.0</text>
+      <text x="258" y="547" font-family="&quot;IBM Plex Mono&quot;,ui-monospace,&quot;SF Mono&quot;,Menlo,monospace" font-size="22"><tspan fill="#2f5fd0">●</tspan> find_skills.py --phrase "release notes"</text>
+    </g>
+
+    <!-- magnifier where the beam starts: lens from top-left box (829,529) d=22 -->
+    <g id="f0-lens" fill="none" stroke="#2f5fd0" stroke-width="3" stroke-linecap="round">
+      <circle cx="840" cy="540" r="11" fill="#ffffff"/>
+      <line x1="832" y1="548" x2="824" y2="556"/>
+    </g>
+
+    <!-- return: the team's skill comes back to the left -->
+    <path d="M924 570 H898 V622 H693" fill="none" stroke="#2f5fd0" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#f0-arrow)"/>
+
+    <!-- card 2: Claude reads the team's skill, then writes -->
+    <g id="f0-card2">
+      <rect x="240" y="585" width="450" height="74" rx="10" fill="#ffffff" stroke="#e2e5ec" stroke-width="1.5"/>
+      <path d="M256 595 H288 L300 607 V649 H256 Z" fill="#ffffff" stroke="#8b93a3" stroke-width="1.5" stroke-linejoin="round"/>
+      <path d="M288 595 V607 H300" fill="none" stroke="#8b93a3" stroke-width="1.5" stroke-linejoin="round"/>
+      <path d="M264 614 H278 M264 636 H280" fill="none" stroke="#2f5fd0" stroke-width="3" stroke-linecap="round"/>
+      <path d="M264 622 H292 M264 628 H288 M264 644 H290" fill="none" stroke="#8b93a3" stroke-width="2" stroke-linecap="round"/>
+      <text x="316" y="607" dy=".35em">Claude reads the team's skill,<tspan x="316" dy="30">then writes</tspan></text>
+    </g>
+
+    <!-- shelf 2: release-notes lit -->
+    <g id="f0-shelf2">
+      <text x="924" y="442" fill="#5f6675">your team's skill repo</text>
+      <g font-family="&quot;IBM Plex Mono&quot;,ui-monospace,&quot;SF Mono&quot;,Menlo,monospace" font-size="22">
+        <rect x="924" y="450" width="48" height="12" rx="3" fill="#f7f8fa" stroke="#e2e5ec" stroke-width="1.5"/>
+        <rect x="924" y="456" width="378" height="26" rx="4" fill="#f7f8fa" stroke="#e2e5ec" stroke-width="1.5"/>
+        <text x="940" y="469" dy=".35em">deploy-checklist</text>
+
+        <rect x="924" y="484" width="48" height="12" rx="3" fill="#f7f8fa" stroke="#e2e5ec" stroke-width="1.5"/>
+        <rect x="924" y="490" width="378" height="26" rx="4" fill="#f7f8fa" stroke="#e2e5ec" stroke-width="1.5"/>
+        <text x="940" y="503" dy=".35em">incident-report</text>
+
+        <rect x="924" y="518" width="48" height="12" rx="3" fill="#eef3fd" stroke="#2f5fd0" stroke-width="1.5"/>
+        <rect id="f0-release2" x="924" y="524" width="378" height="58" rx="4" fill="#eef3fd" stroke="#2f5fd0" stroke-width="1.5"/>
+        <text x="940" y="540" dy=".35em" font-weight="700" fill="#2f5fd0">release-notes</text>
+        <rect x="940" y="552" width="272" height="26" rx="13" fill="#ffffff" stroke="#e2e5ec" stroke-width="1.5"/>
+        <text x="952" y="565" dy=".35em" font-family="&quot;Space Grotesk&quot;,&quot;Avenir Next&quot;,&quot;Segoe UI&quot;,ui-sans-serif,sans-serif" font-size="24" fill="#5f6675">written by a teammate</text>
+
+        <rect x="924" y="584" width="48" height="12" rx="3" fill="#f7f8fa" stroke="#e2e5ec" stroke-width="1.5"/>
+        <rect x="924" y="590" width="378" height="26" rx="4" fill="#f7f8fa" stroke="#e2e5ec" stroke-width="1.5"/>
+        <text x="940" y="603" dy=".35em">api-style-guide</text>
+
+        <rect x="924" y="618" width="48" height="12" rx="3" fill="#f7f8fa" stroke="#e2e5ec" stroke-width="1.5"/>
+        <rect x="924" y="624" width="378" height="26" rx="4" fill="#f7f8fa" stroke="#e2e5ec" stroke-width="1.5"/>
+        <text x="940" y="637" dy=".35em">db-migration</text>
+      </g>
+      <line x1="924" y1="655" x2="1302" y2="655" stroke="#8b93a3" stroke-width="3" stroke-linecap="round"/>
+    </g>
+
+    <!-- footer -->
+    <line x1="64" y1="679" x2="1302" y2="679" stroke="#e2e5ec" stroke-width="1"/>
+    <text x="64" y="719" font-size="26">Maybe someone in your org already wrote a skill for this. skill-finder lets Claude find it.</text>
+  </g>
+</svg>
