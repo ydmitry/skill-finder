@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 104 1366 652" role="img"
-     aria-label="On the public SkillRet benchmark, the finder's keyword ranking scores above the BM25 keyword baseline (51.69) and below the best embedding model in the paper (70.26), which needs a model.">
+     aria-label="On the public SkillRet benchmark, the finder's keyword ranking scores above the BM25 keyword baseline (51.69) and below the best off-the-shelf embedding model in the paper (70.26), which needs a model.">
   <!-- spec-items: subtitle "SkillRet, a public benchmark (arXiv 2605.05726): 4,392 requests, 6,006 public SKILL.md files" | scale 0-100 ticks every 10 | zone "no model" | zone "needs a model" | BM25 keyword baseline 51.69 | skill-finder ‑‑task 58.78 (accent marker; two ASCII hyphens in the drawn text) + "whole request, not a phrase" | embedding models in the SkillRet paper, up to 70.26 | caption "NDCG@10: how high the needed skills sit in the first ten, out of 100" | context "The lead over BM25 comes from requests that need two or three skills; on one-skill requests there is no measurable difference." | note "Scores the ranker on whole requests, not the short phrase lookups Claude runs." | takeaway -->
   <!-- geometry: HERO_H=130; subtitle y=166; axis x 64..1302 = 1238 px for 0..100 -> 12.38 px/unit; 51.69 -> 704, 58.78 -> 792, 70.26 -> 934; ticks x = 64 + 123.8k; lane1 y=186 h=120 dots cy=236; lane2 y=310 h=120 dot cy=370; no-model stems solid to 306 then dashed 310..454; axis y=454 labels y=486; caption 530; context 584/614; note 650; footer rule 680 takeaway 720 H=756 -->
   <defs>
@@ -62,7 +62,7 @@
     <!-- embedding models: dot from top-left box (925,361) d=18 -->
     <g id="f4-embed">
       <circle cx="934" cy="370" r="9" fill="#5f6675"/>
-      <text x="952" y="350" font-weight="600" fill="#5f6675">embedding models in the<tspan x="952" dy="30">SkillRet paper, up to</tspan></text>
+      <text x="952" y="350" font-weight="600" fill="#5f6675">off-the-shelf embedding<tspan x="952" dy="30">models in the paper, up to</tspan></text>
       <text x="952" y="414" font-family="&quot;IBM Plex Mono&quot;,ui-monospace,&quot;SF Mono&quot;,Menlo,monospace" font-size="26" font-weight="700" fill="#5f6675">70.26</text>
     </g>
 
@@ -87,6 +87,6 @@
 
     <!-- footer -->
     <line x1="64" y1="680" x2="1302" y2="680" stroke="#e2e5ec" stroke-width="1"/>
-    <text x="64" y="720" font-size="26">Above BM25, with no model either; the best embedding model in the paper scores higher.</text>
+    <text x="64" y="720" font-size="26">Above BM25, with no model either; the best off-the-shelf embedding model scores higher.</text>
   </g>
 </svg>

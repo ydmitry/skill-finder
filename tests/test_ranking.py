@@ -200,6 +200,128 @@ class PhraseSearch(unittest.TestCase):
         self.assertNotIn("nearest", out)
         self.assertNotIn("Skills holding each word", self.text_of(FIXTURES, "contrast ratio"))
 
+    def make_refs(self, tmp, skill, refs):
+        for rel, text in refs.items():
+            (Path(tmp) / skill / rel).parent.mkdir(parents=True, exist_ok=True)
+            (Path(tmp) / skill / rel).write_text(text)
+
+    def test_a_phrase_only_in_a_reference_file_is_listed_with_its_file_and_line(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.make(tmp, {"alpha": "---\nname: alpha\ndescription: Does a thing.\n---\n\n# Alpha\nSee the references.\n",
+                            "beta": "---\nname: beta\ndescription: x\n---\nNothing.\n"})
+            self.make_refs(tmp, "alpha", {"references/rollback.md": "# Rollback\n\nUse the Blue-green switch to roll back.\n"})
+            code, out = self.run_phrase("blue green switch", folder=tmp)
+            self.assertEqual((code, out["matched"], out["candidates"]), (0, 0, []))
+            self.assertEqual(out["reference_matched"], 1)
+            self.assertEqual([r["name"] for r in out["reference_hits"]], ["alpha"])
+            self.assertEqual(out["reference_hits"][0]["match"], "references/rollback.md:3: Use the Blue-green switch to roll back.")
+            text = self.text_of(tmp, "blue green switch")
+            self.assertIn("No SKILL.md contains it, but 1 skill(s) hold it in their reference files", text)
+            self.assertIn(":references/rollback.md:3: Use the Blue-green switch to roll back.", text)
+            self.assertNotIn("No skill contains it", text)
+
+    def test_the_nearest_list_stays_beside_reference_hits_without_repeating_them(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            skills = {"alpha": "---\nname: alpha\ndescription: x\n---\nbody\n",
+                      "switch-board": "---\nname: switch-board\ndescription: A switch board.\n---\nbody\n"}
+            skills.update({f"filler-{i}": f"---\nname: filler-{i}\ndescription: x\n---\nNothing here {i}.\n" for i in range(10)})
+            self.make(tmp, skills)
+            self.make_refs(tmp, "alpha", {"references/a.md": "the blue green switch\n"})
+            _, out = self.run_phrase("blue green switch", folder=tmp)
+            self.assertIn("switch-board", [n["name"] for n in out["nearest"]])
+            text = self.text_of(tmp, "blue green switch")
+            self.assertIn("Nearest by words", text)
+            self.assertIn("switch-board", text.split("Nearest by words")[1])
+            self.assertNotIn("alpha", text.split("Nearest by words")[1])
+
+    def test_reference_hits_come_after_the_skill_md_hits_and_leave_their_order(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.make(tmp, {"beta": "---\nname: beta\ndescription: x\n---\nThe amber lamp.\n",
+                            "amber-lamp": "---\nname: amber-lamp\ndescription: x\n---\nbody\n",
+                            "gamma": "---\nname: gamma\ndescription: x\n---\nbody\n",
+                            "delta": "---\nname: delta\ndescription: x\n---\nAn amber lamp too.\n"})
+            self.make_refs(tmp, "gamma", {"notes.md": "Light the amber lamp.\n"})
+            self.make_refs(tmp, "delta", {"notes.md": "amber lamp\n"})
+            _, out = self.run_phrase("amber lamp", folder=tmp)
+            self.assertEqual([c["name"] for c in out["candidates"]], ["amber-lamp", "beta", "delta"])
+            self.assertEqual([r["name"] for r in out["reference_hits"]], ["gamma"])          # delta holds it in SKILL.md: not repeated
+            text = self.text_of(tmp, "amber lamp")
+            self.assertLess(text.index("3. delta"), text.index("Only in reference files"))
+            self.assertLess(text.index("Only in reference files"), text.index("Best match: amber-lamp"))
+
+    def test_reference_hits_rank_by_phrases_then_files_then_name_and_five_are_shown(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            names = ["k1", "k2", "k3", "k4", "k5", "k6", "two-files", "both-phrases"]
+            self.make(tmp, {n: f"---\nname: {n}\ndescription: x\n---\nbody\n" for n in names})
+            for n in names[:6]: self.make_refs(tmp, n, {"r.md": "a quartz gauge\n"})
+            self.make_refs(tmp, "two-files", {"r.md": "quartz gauge\n", "s.md": "quartz gauge\n"})
+            self.make_refs(tmp, "both-phrases", {"r.md": "quartz gauge and brass valve\n"})
+            _, out = self.run_phrase("quartz gauge", "brass valve", folder=tmp)
+            self.assertEqual(out["reference_matched"], 8)
+            self.assertEqual([r["name"] for r in out["reference_hits"]], ["both-phrases", "two-files", "k1", "k2", "k3"])
+
+    def test_skipped_and_hidden_folders_are_not_read_as_references(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.make(tmp, {"alpha": "---\nname: alpha\ndescription: x\n---\nbody\n"})
+            self.make_refs(tmp, "alpha", {"evals/case.md": "quartz gauge\n", ".cache/x.md": "quartz gauge\n", "tests/t.md": "quartz gauge\n"})
+            _, out = self.run_phrase("quartz gauge", folder=tmp)
+            self.assertEqual(out["reference_hits"], [])
+
+    def test_word_counts_beside_a_reference_hit_count_the_reference_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.make(tmp, {"alpha": "---\nname: alpha\ndescription: x\n---\nbody\n", "beta": "---\nname: beta\ndescription: x\n---\nbody\n"})
+            self.make_refs(tmp, "alpha", {"references/r.md": "the blue green switch\n"})
+            _, out = self.run_phrase("blue green switch", folder=tmp)
+            self.assertEqual(out["word_counts"], {"blue": 1, "green": 1, "switch": 1})
+            self.assertIn("blue 1, green 1, switch 1", self.text_of(tmp, "blue green switch"))
+
+    def test_a_large_reference_file_and_one_past_many_other_files_are_still_read(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.make(tmp, {"big": "---\nname: big\ndescription: x\n---\nbody\n", "many": "---\nname: many\ndescription: x\n---\nbody\n"})
+            self.make_refs(tmp, "big", {"references/huge.md": ("filler line\n" * 40000) + "the quartz gauge\n"})      # about 480 KB
+            self.make_refs(tmp, "many", {f"docs/a{i:03}.md": "nothing\n" for i in range(130)})
+            self.make_refs(tmp, "many", {"references/z.md": "the quartz gauge\n"})
+            _, out = self.run_phrase("quartz gauge", folder=tmp)
+            self.assertEqual(sorted(r["name"] for r in out["reference_hits"]), ["big", "many"])
+
+    def test_log_folders_are_not_references(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.make(tmp, {"alpha": "---\nname: alpha\ndescription: x\n---\nbody\n"})
+            self.make_refs(tmp, "alpha", {"logs/run1.md": "quartz gauge\n", "log/x.md": "quartz gauge\n"})
+            _, out = self.run_phrase("quartz gauge", folder=tmp)
+            self.assertEqual(out["reference_hits"], [])
+
+    def test_the_excerpt_is_the_line_with_the_phrase_and_shows_it_in_a_long_line(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.make(tmp, {"alpha": "---\nname: alpha\ndescription: x\n---\nbody\n"})
+            self.make_refs(tmp, "alpha", {"rfc.txt": "Page one\n\x0cHeader two\n" + "word " * 60 + "the quartz gauge reads high\n"})
+            _, out = self.run_phrase("quartz gauge", folder=tmp)
+            self.assertTrue(out["reference_hits"][0]["match"].startswith("rfc.txt:3: "), out["reference_hits"][0]["match"])
+            self.assertIn("quartz gauge", out["reference_hits"][0]["match"])
+
+    def test_limit_also_caps_the_reference_block(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            names = ["h1", "h2", "k1", "k2", "k3"]
+            self.make(tmp, {n: f"---\nname: {n}\ndescription: x\n---\n{'quartz gauge' if n.startswith('h') else 'body'}\n" for n in names})
+            for n in names[2:]: self.make_refs(tmp, n, {"r.md": "quartz gauge\n"})
+            _, out = self.run_phrase("quartz gauge", folder=tmp, extra=("--limit", "1"))
+            self.assertEqual(len(out["reference_hits"]), 1)
+
+    def test_toc_json_does_not_claim_references_were_searched(self):
+        _, out = self.run_phrase("contrast ratio", extra=("--toc",))
+        self.assertNotIn("reference_hits", out)
+
+    def test_json_nearest_keeps_the_reference_hits_and_the_text_does_not_repeat_them(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            skills = {"alpha": "---\nname: alpha\ndescription: x\n---\nbody\n"}
+            skills.update({f"filler-{i}": f"---\nname: filler-{i}\ndescription: x\n---\nNothing here {i}.\n" for i in range(10)})
+            self.make(tmp, skills)
+            self.make_refs(tmp, "alpha", {"references/a.md": "the blue green switch\n"})
+            _, out = self.run_phrase("blue green switch", folder=tmp)
+            self.assertIn("alpha", [n["name"] for n in out["nearest"]])
+            text = self.text_of(tmp, "blue green switch")
+            self.assertEqual(text.count("alpha/SKILL.md"), 1)
+
     def test_no_match_says_so_and_a_task_is_refused_beside_it(self):
         cmd = [sys.executable, str(FINDER), "--only", str(FIXTURES), "--phrase", "zzz qqq"]
         self.assertIn("No skill contains it", subprocess.run(cmd, capture_output=True, text=True).stdout)

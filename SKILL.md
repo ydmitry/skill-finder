@@ -35,19 +35,22 @@ python3 ~/.claude/skills/skill-finder/scripts/find_skills.py --phrase "<two or t
 It looks for the exact phrase in the whole `SKILL.md` of every skill, body included, and lists up to 40, three short lines
 each (name, state, path; the start of the description; the line that matched), best first: a phrase in the name, then in
 the description, then how often it occurs. Several `--phrase` are alternatives, and a skill holding more of them comes
-first. It says how many skills match: over 40, use a longer phrase. When none match, it says how many skills hold each
-word of the phrase (a word held by none is not how any skill says it) and lists the 10 skills nearest by words, the first
+first. It says how many skills match: over 40, use a longer phrase. Skills that hold the phrase only in their reference
+files (`.md`/`.txt` in the skill's folder, `references/` first, no log, test or hidden folders, up to 120 files of up to
+2 MB a skill) follow, up to 5, with the file and line: open that skill's `SKILL.md`, then the file. When no `SKILL.md` holds
+it, those come first; then it says how many skills hold each word of the phrase in `SKILL.md` or reference files (a word
+held by none is not how any skill says it) and lists up to 10 skills nearest by words, not repeating those above, the first
 3 with their descriptions: use fewer words or the other form of the word, or open one of them if it fits. `--phrase` and `--task` are not combined.
 
-**Tables of contents.** `--toc` prints every skill as `name — first sentence` grouped by folder (roughly 30 tokens a skill, 6 with `--kind names`); `--toc <folder>` one group; `--toc <skill>` that skill's path and header outline with line numbers, `--kind files` its files. `--phrase "<words>" --toc` prints the hits as sections, one sentence each, with no best match, and ends with the `--toc "<name>"` command that prints a hit's path. `--phrase` without `--toc` stays the first lookup: in tests the table and the sections did not find the right skill more often than it.
+**Tables of contents.** `--toc` prints every skill as `name — first sentence` grouped by folder (roughly 30 tokens a skill, 6 with `--kind names`); `--toc <folder>` one group; `--toc <skill>` that skill's path and header outline with line numbers, `--kind files` its files. `--phrase "<words>" --toc` prints the hits as sections (`SKILL.md` only, no reference files), one sentence each, with no best match, and ends with the `--toc "<name>"` command that prints a hit's path. `--phrase` without `--toc` stays the first lookup: in tests the table and the sections did not find the right skill more often than it.
 
 Both scan user skills, project skills (`.claude/skills` up from the cwd) and every plugin's skills in each
 config dir (`~/.claude`, and `$CLAUDE_CONFIG_DIR` when set): enabled plugins, DISABLED plugins, installed-but-unlisted ones,
 and marketplace folders of plugins never installed. Each hit shows its state, source, path, the whole description (cut at 1,500 characters, and it says so), the
 lines that matched with `file:line`, and its reference files with their first heading. Copies of one skill are shown
 once, with "also at" where their labels differ: identical files, versions of one plugin, a user skill in both config folders,
-or the same name with the same description. Two different skills that share a name are both shown, unless they sit in one plugin. `--list` prints the whole inventory. `--only DIR` (repeatable) scans `DIR/<name>/SKILL.md`
-alone, nothing from the config dirs or the project: for tests and fixture folders. A file
+or the same name with the same description. Two different skills that share a name are both shown, unless they sit in one plugin. `--list` prints the whole inventory. `--only DIR` (repeatable) scans only the skills
+in `DIR/<name>/`, nothing from the config dirs or the project: for tests and fixture folders. A file
 `scripts/roots` (one folder per line, `#` comments; copy `scripts/roots.example`; machine-local, not committed) adds more
 folders, like `--root`. The ranking is by keywords, so it finds candidates; it does not decide. A `LOW CONFIDENCE` line
 means the top hit is weak: under two task words in its name or description and not clearly ahead of the next hit, or

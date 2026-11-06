@@ -18,7 +18,8 @@ disk here; the session's own skill list covers them. Ranks by task terms found i
 SKILL.md and references/. It finds candidates; a model reading them decides.
 --phrase is the other way to search: not scored words but an exact phrase, looked up in the whole SKILL.md of every skill (like
 `grep -il`), then listed compactly: the best 40 by a phrase in the name, then in the description, then how often it occurs.
-When no skill holds the phrase it says how many hold each word and lists the 10 nearest by the --task ranking.
+Up to 5 skills that hold it only in their reference files follow, with file:line. When no SKILL.md holds the phrase those
+come first; then it says how many skills hold each word and lists the 10 nearest by the --task ranking.
 A phrase search that finds skills ends with the best match: why it matched (where the phrase sits), when to use it, its first lines,
 its reference files, and where to read. With --for "<one sentence about the task>" one cheap model call (Claude Code, no tools)
 reads the first three hits against that sentence and picks one or says none fits (SKILL_FINDER_EXPLAIN=0 turns it off).
@@ -184,22 +185,34 @@ def terms_of(task):
 def pattern(t):                                 # a term starts a word: "test" matches "tests", not "latest"
     return re.compile(r"(?<![a-z0-9])" + re.escape(t))
 
-def read_small(path):
+def read_small(path, limit=300_000):
     try:
-        if path.stat().st_size > 300_000: return ""
+        if path.stat().st_size > limit: return ""
         return path.read_text(errors="replace")
     except Exception: return ""
 
+REF_SKIP = {"logs", "log"}          # run logs are not references
+REF_FILES_MAX = 120                 # reference files read a skill, references/ first
+REF_BYTES_MAX = 2_000_000           # a reference file larger than this is not read
+
+def reference_paths(sdir):
+    """Every .md/.txt in a skill folder but SKILL.md: no skipped, hidden or log folders, no requirements files; references/ first."""
+    out = []
+    for root, dirs, files in os.walk(sdir):
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS and d not in REF_SKIP and not d.startswith(".")]
+        out += [Path(root) / n for n in files if n.endswith((".md", ".txt")) and n != "SKILL.md" and not n.startswith((".", "requirements"))]
+    return sorted(out, key=lambda p: (p.relative_to(sdir).parts[0] not in ("references", "reference"), p))
+
 def doc_files(sdir):
-    refs = sorted(p for p in sdir.rglob("*") if p.is_file() and p.suffix in (".md", ".txt") and p.name != "SKILL.md"
-                  and not any(part in SKIP_DIRS or part.startswith(".") for part in p.relative_to(sdir).parts))
-    return [sdir / "SKILL.md"] + refs[:60]
+    return [sdir / "SKILL.md"] + reference_paths(sdir)[:REF_FILES_MAX]
 
 def prepare(entries):
     for e in entries:
-        files = doc_files(e["dir"])
-        e["_main"] = read_small(files[0]).lower()
-        e["_refs"] = [(f, read_small(f).lower()) for f in files[1:]]
+        if "_refs" in e: continue                   # read once: a phrase search and its miss report both need them
+        refs = reference_paths(e["dir"])
+        e["_main"] = read_small(e["dir"] / "SKILL.md").lower()
+        e["_refs"] = [(f, read_small(f, REF_BYTES_MAX).lower()) for f in refs[:REF_FILES_MAX]]
+        e["_refs_unread"] = max(0, len(refs) - REF_FILES_MAX) + sum(1 for f, txt in e["_refs"] if not txt and f.stat().st_size > REF_BYTES_MAX)
 
 def document_frequency(entries, pats):
     return {t: sum(1 for e in entries if p.search(e["_main"]) or p.search(e["name"].lower())) for t, p in pats.items()}
@@ -420,16 +433,16 @@ def phrase_pattern(phrase):
     words = re.findall(r"[a-z0-9][a-z0-9+#.]*", phrase.lower())
     return re.compile(r"(?<![a-z0-9])" + r"[\s_-]+".join(re.escape(w) for w in words), re.I) if words else None
 
-def near_misses(entries, phrases):
+def near_misses(entries, phrases, extra=0):
     """For phrases nothing contains: how many skills hold each of their words, and the skills nearest by words (the --task
-    ranking), so a miss still points somewhere."""
+    ranking), so a miss still points somewhere. `extra` more rows, for a caller that drops some it already shows."""
     terms = terms_of(" ".join(phrases))
     if not terms: return {}, []
     ranked, _, _ = rank(entries, terms)
     said = " ".join(phrases).lower()
     counts = document_frequency(entries, {t: pattern(t) for t in sorted(terms, key=said.index)})      # in the order they were typed
     rows = [dict(score=round(s_, 1), name=e["name"], status=e["status"], source=e["source"], path=str(e["dir"] / "SKILL.md"),
-                 description=" ".join(e["description"].split())[:110]) for s_, e in ranked[:CLOSEST]]
+                 description=" ".join(e["description"].split())[:110]) for s_, e in ranked[:CLOSEST + extra]]
     return counts, rows
 
 def body_lines(e, n):
@@ -581,11 +594,42 @@ def print_phrase_toc(entries, hits, sections, counts, nearest, limit):
     print(f'Open the one that fits: python3 {invoked_script()} --toc "<name>" prints its path and sections. None fits: search other words, or --toc for the whole table.'
           if hits or nearest else "Search other words, or --toc for the whole table.")
 
+REF_SHOWN = 5        # skills shown that hold a phrase only in their reference files
+
+def excerpt(path, pats):
+    """The line of a file where the first phrase match starts, as (line number, text); a long line is cut around the match."""
+    text = read_small(path, REF_BYTES_MAX)
+    ms = [m for pt in pats if (m := pt.search(text))]
+    if not ms: return 0, ""
+    m = min(ms, key=lambda m: m.start())
+    start, end = text.rfind("\n", 0, m.start()) + 1, text.find("\n", m.start())
+    line = text[start:end if end >= 0 else len(text)]
+    cut = max(0, m.start() - start - 40) if len(line) > 140 else 0
+    return text.count("\n", 0, m.start()) + 1, ("..." if cut else "") + " ".join(line[cut:cut + 140].split())
+
+def reference_hits(entries, pats, skip):
+    """Skills that hold a phrase only in their reference files (see prepare), not in SKILL.md or the name: more phrases first,
+    then more files (five count), then the name. Each comes with its first matching line. `skip` holds the SKILL.md hits."""
+    out = []
+    for e in entries:
+        if id(e) in skip: continue
+        found, files, first = [], 0, None
+        for f, text in e["_refs"]:
+            here = [ph for ph, pt in pats if pt.search(text)]
+            if not here: continue
+            files += 1
+            found += [ph for ph in here if ph not in found]
+            if first is None: first = (str(f.relative_to(e["dir"])), *excerpt(f, [pt for _, pt in pats]))
+        if found: out.append(((-len(found), -min(files, 5), e["name"]), e, found, first))
+    out.sort(key=lambda h: h[0])
+    return out
+
 def phrase_search(entries, phrases, limit, as_json, for_text="", toc=False):
     """`grep -il` over the whole SKILL.md of every skill, but ranked (so the shown ones do not depend on directory order) and
     compact: a phrase in the name first, then in the description, then how often it occurs. Several phrases are alternatives; a
-    skill that holds more of them comes first. With `toc` the hits print as sections (phrase in the name, the description, the body), one
-    sentence each, and no best match."""
+    skill that holds more of them comes first. Then up to REF_SHOWN skills that hold a phrase only in their reference files, with
+    file:line. With `toc` the hits print as sections (phrase in the name, the description, the body), one sentence each, no best
+    match, and reference files are not read."""
     pats = [(ph, phrase_pattern(ph)) for ph in phrases]
     if any(pt is None for _, pt in pats): sys.exit("--phrase needs words or numbers")
     hits = []
@@ -611,28 +655,48 @@ def phrase_search(entries, phrases, limit, as_json, for_text="", toc=False):
     rows = [dict(name=e["name"], status=e["status"], source=e["source"], path=str(e["dir"] / "SKILL.md"), phrases=found,
                  description=" ".join(e["description"].split())[:110], match=f"{line[0]}: {line[1]}" if line else "", also=e["also"])
             for _, e, found, line, _ in shown]
-    counts, nearest = near_misses(entries, phrases) if not hits else ({}, [])
+    if not toc: prepare(entries)
+    refs = reference_hits(entries, pats, {id(h[1]) for h in hits}) if not toc else []
+    ref_rows = [dict(name=e["name"], status=e["status"], source=e["source"], path=str(e["dir"] / "SKILL.md"), phrases=found,
+                     description=" ".join(e["description"].split())[:110], match=f"{first[0]}:{first[1]}: {first[2]}")
+                for _, e, found, first in refs[:min(REF_SHOWN, limit)]]
+    unread = sum(e.get("_refs_unread", 0) for e in entries)
+    counts, near = near_misses(entries, phrases, extra=len(ref_rows)) if not hits else ({}, [])
+    if counts and not toc:                          # the word counts cover what the search read: SKILL.md, the name, the references
+        counts = {t: sum(1 for e in entries if any(p.search(x) for x in (e["_main"], e["name"].lower(), *(r for _, r in e["_refs"]))))
+                  for t, p in ((t, pattern(t)) for t in counts)}
+    nearest = near[:CLOSEST]
+    shown_near = [r for r in near if r["path"] not in {x["path"] for x in ref_rows}][:CLOSEST]      # a skill shown above is not listed twice
     best = best_match(hits, for_text) if hits and not toc else None
     sections = phrase_sections(shown) if toc else None
     if as_json:
         out = dict(phrases=phrases, scanned=len(entries), matched=len(hits), shown=len(rows), candidates=rows)
+        if not toc: out.update(reference_matched=len(refs), reference_hits=ref_rows, reference_files_unread=unread)
         if not hits: out.update(word_counts=counts, nearest=nearest)
         elif not toc: out.update(best=best)
         if toc: out.update(sections={k: [h[1]["name"] for h in v] for k, v in sections.items()})
         print(json.dumps(out, indent=1)); return
     quoted = " | ".join(f'"{ph}"' for ph in phrases)
-    print(f"phrase search: {quoted} in the SKILL.md of {len(entries)} skills on disk (a phrase starts a word: 'plan' matches 'planning', not 'airplane')")
+    where = "SKILL.md" if toc else "SKILL.md and reference files"
+    print(f"phrase search: {quoted} in the {where} of {len(entries)} skills on disk (a phrase starts a word: 'plan' matches 'planning', not 'airplane')")
     if toc: return print_phrase_toc(entries, hits, sections, counts, nearest, limit)
+    more = "" if len(refs) <= len(ref_rows) else f"; the first {len(ref_rows)} are shown"
     if not hits:
-        print("No skill contains it. Try fewer words, another form of the word, or a word the finished thing is called.")
+        if ref_rows:
+            print(f"No SKILL.md contains it, but {len(refs)} skill(s) hold it in their reference files{more}. Open the SKILL.md of one that fits; "
+                  "the line shown is in its reference file.\n")
+            print_reference_rows(ref_rows)
+        else:
+            print("No skill contains it. Try fewer words, another form of the word, or a word the finished thing is called.")
         if counts:
             print("Skills holding each word: " + ", ".join(f"{t} {n}" for t, n in counts.items()) + ". A word held by none is not how any skill says it.")
-        if nearest:
+        if shown_near:
             print(f"\nNearest by words, not by phrase (--task \"{' '.join(counts)}\"); open one only if its description fits:")
-            for i, r in enumerate(nearest, 1):
+            for i, r in enumerate(shown_near, 1):
                 print(f"{i}. {r['name']}  [{r['status']}]  {r['path']}" + (f"\n   {r['description']}" if i <= CLOSEST_FULL else ""))
-        elif counts:
+        elif counts and not ref_rows:
             print("No skill holds any of these words either.")
+        if unread: print(f"Not read: {unread} reference file(s) over {REF_BYTES_MAX // 1_000_000} MB or past the first {REF_FILES_MAX} of a skill.")
         return
     print(f"{len(hits)} skill(s) contain it" + ("" if len(hits) <= limit else f"; the best {limit} are shown. A longer phrase narrows it")
           + ". Best first: the phrase in the name, then in the description, then how often it occurs.\n")
@@ -641,7 +705,16 @@ def phrase_search(entries, phrases, limit, as_json, for_text="", toc=False):
         print(f"   {r['description']}")
         if r["match"]: print(f"   :{r['match']}")
         if r["also"]: print(f"   also at: {'; '.join(r['also'][:2])}" + (f" (+{len(r['also']) - 2} more)" if len(r["also"]) > 2 else ""))
+    if ref_rows:
+        print(f"\nOnly in reference files ({len(refs)} skill(s) whose SKILL.md does not contain it{more}):")
+        print_reference_rows(ref_rows)
     print_best(best, for_text)
+
+def print_reference_rows(rows):
+    for r in rows:
+        print(f"- {r['name']}  [{r['status']}]  {r['path']}")
+        print(f"   {r['description']}")
+        print(f"   :{r['match']}")
 
 def enable(entries, names, into, source):
     """Copy skills into DIR/.claude/skills so a session started in DIR can invoke them, whatever their plugin's
@@ -677,7 +750,7 @@ def remove(into):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--task", default=""); ap.add_argument("--top", type=int, default=8)
-    ap.add_argument("--phrase", action="append", default=[], help="an exact phrase to look for in every SKILL.md (repeatable: alternatives)")
+    ap.add_argument("--phrase", action="append", default=[], help="an exact phrase to look for in every SKILL.md, then in reference files (repeatable: alternatives)")
     ap.add_argument("--limit", type=int, default=PHRASE_LIMIT, help="--phrase: how many skills to list")
     ap.add_argument("--for", dest="for_text", default="", help="--phrase: one sentence on what you are doing; a model reads the first hits against it and says which fits, or none")
     ap.add_argument("--root", action="append", default=[]); ap.add_argument("--list", action="store_true")

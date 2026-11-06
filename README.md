@@ -11,7 +11,8 @@ Your company keeps Claude Code skills in a few repos or plugin marketplaces, or 
 is in it. You haven't read them all, and you won't install them all. But for the task in front of you, one may already
 exist. skill-finder searches every skill on your machine (installed, disabled, or never installed but shipped inside a
 marketplace Claude Code cloned) plus any skill repo you have cloned and listed in `scripts/roots`. It lists the skills that
-contain the words Claude looks up, each with its path and the line that matched. Claude can then read the one that fits, or
+contain the words Claude looks up, in their `SKILL.md` or in their reference files, each with its path and the line that
+matched. Claude can then read the one that fits, or
 you can copy it into a folder you start a fresh session in. It never edits `settings.json`; the only global change is the
 `CLAUDE.md` lines you add.
 
@@ -27,7 +28,7 @@ off for skills Claude cannot see; for skills Claude already lists, the tests fou
 
 ```
 $ python3 scripts/find_skills.py --phrase "release notes" --only tests/fixtures/skills
-phrase search: "release notes" in the SKILL.md of 18 skills on disk (a phrase starts a word: 'plan' matches 'planning', not 'airplane')
+phrase search: "release notes" in the SKILL.md and reference files of 18 skills on disk (a phrase starts a word: 'plan' matches 'planning', not 'airplane')
 1 skill(s) contain it. Best first: the phrase in the name, then in the description, then how often it occurs.
 
 1. release-notes  [folder skill]  tests/fixtures/skills/release-notes/SKILL.md
@@ -53,8 +54,9 @@ not work from the copy; the finder warns).
 
 ## Why not just grep?
 
-`--phrase` is close to a `grep -ril` over every `SKILL.md`. In a small Haiku test (four tasks over one folder of 927 public
-skills), Claude found the right skill about as often with plain `grep`. What the finder adds is around the match:
+`--phrase` is close to a `grep -ril` over every `SKILL.md`, plus up to five skills that hold the phrase only in their
+reference files. In a small Haiku test (four tasks over one folder of 927 public skills, run before the finder read
+reference files), Claude found the right skill about as often with plain `grep` over `SKILL.md` files. What the finder adds is around the match:
 
 - **Where to look.** It knows where Claude Code keeps skills: user and project folders and every plugin's skills in each
   config dir, including disabled plugins and the marketplace folders of plugins you never installed, plus the folders in
@@ -64,7 +66,14 @@ skills), Claude found the right skill about as often with plain `grep`. What the
 - **Order.** The phrase in the name first, then in the description, then by how often it occurs, not by folder order. A
   phrase starts a word and ignores case, and its words match across spaces, hyphens and underscores ("release notes" finds
   `release-notes`).
-- **No match.** It says how many skills hold each word and usually lists the skills nearest by words.
+- **Reference files.** Many skills keep most of their text in reference files (`.md` and `.txt` files in the skill's
+  folder, `references/` first; log, test and hidden folders are skipped). A skill that holds the phrase only there is listed
+  after the `SKILL.md` hits, up to five, with the file and line. In a replay of 894 lookups recorded in four test tasks (no
+  model), the right skill was in the first ten for 213 of the 294 lookups that no `SKILL.md` matched, against 205 without it
+  (first three: 126 against 113). All of the gain at ten came from one task, whose words sit in its reference files; the
+  other three neither gained nor lost there.
+- **No match.** It says how many skills hold each word (in `SKILL.md` or reference files) and usually lists the skills
+  nearest by words.
 
 `--task` is a keyword ranking instead (a word in the name counts most, then the description, then the body; rare words
 count more). It is the part the public benchmark below scores.
@@ -102,7 +111,8 @@ marketplaces you added are searched as they are, and `scripts/roots` holds the r
 The tested text said "No match, or a LOW CONFIDENCE one"; only the keyword search (`--task`) prints `LOW CONFIDENCE`, never
 `--phrase`, so that clause is left out here. The block costs about 220 tokens in every session. In a Haiku test,
 a longer version of this text worked better added to the task of an unattended run (such as `claude -p` with a task) than in
-`CLAUDE.md` (below), so put it in such a task too. To see whether it works for
+`CLAUDE.md` (below), so put it in such a task too. The block predates reference hits: when only a skill's reference file
+holds the phrase, the output names that skill and the file, which counts as a match. To see whether it works for
 you, count the transcripts in which Claude ran the finder:
 
 ```
@@ -117,8 +127,9 @@ In short: it helps Claude find and open skills it could not otherwise see, and a
 The tests measure whether Claude ran the finder and opened the skill, not whether the work came out better. They were run
 with Claude Haiku and Sonnet, their harness is not published (several tests run on one machine's own config and skills, some
 of them private; the others on a local copy of 927 public skills that is not redistributed), and they are small: read
-them as directions, not rates. The one test that needs no model is published: its scripts are in `bench/skillret/` (the
-last paragraph of this section).
+them as directions, not rates. They ran before `--phrase` also read reference files. Two tests need no model: the
+reference-file replay above, which replays the unpublished runs' lookups, and the benchmark in the last paragraph of this
+section, whose scripts are published in `bench/skillret/`.
 
 **Skills you have not installed** are the finder's main job. Ten skills from public repos that were not installed, and
 requests written without any word of the skill's name or description (rejected by a check, then confirmed blind by a second
@@ -129,16 +140,16 @@ five runs; two of the misses were requests that fit another unseen skill as well
 request did not share. Ten skills, one model, the first turn only (nothing is written, so whether the skill was followed is
 not measured), and requests written by a model that had read each skill: a direction, not a rate.
 
-**Why the instruction is needed.** A `SKILL.md` description that says "use at the start of EVERY task" got the skill called
-in 0 of 232 runs. The models call the skill whose topic matches the task (a chart skill for a chart) and never a skill whose
+**Why the instruction is needed.** None of the `SKILL.md` descriptions tried, one of them saying "use at the start of EVERY
+task", got the skill called: 0 of 232 runs. The models call the skill whose topic matches the task (a chart skill for a chart) and never a skill whose
 job is to look for skills. On a machine with many skills Claude Code also drops the description of the ones you never
 invoke, so the skill is often listed by name alone. What works better is a standing instruction in the system
 instructions, next to the work.
 
 **What the instruction does.** With it in the global `CLAUDE.md`, Sonnet ran the finder before its first edit in 8 of 8 test
-tasks and in none of 4 one-line questions. With the lookup allowed it then opened a skill from the list in 6 of 8; in 4 of
+runs (four tasks, two runs each) and in none of 4 one-line questions. With the lookup allowed it then opened a skill from the list in 6 of 8; in 4 of
 those it was a skill it opens without the finder, and for the task whose best skill is not in its own skill list (a colour
-theme) it opened the finder's pick in 2 of 2. Subagents read the same file and did the same in 8 of 8 delegated tasks, at
+theme) it opened the finder's pick in 2 of 2. Subagents read the same file and did the same in 8 of 8 delegated runs, at
 about three lookups each before their first edit; a coordinator that only handed the task over looked nothing up (0 of 8),
 so those lookups stay out of the main conversation. In placement tests with Haiku on unattended runs, a longer version of
 this text in `CLAUDE.md` got the finder run every time, but the skill opened in 9 of 15 runs; added to the task itself, the
@@ -164,19 +175,19 @@ laptop in about a quarter of an hour, with no API key.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/skillret-benchmark-dark.png">
-  <img src="docs/images/skillret-benchmark.png" alt="On the public SkillRet benchmark, the finder's keyword ranking scores above the BM25 keyword baseline (51.69) and below the best embedding model in the paper (70.26), which needs a model.">
+  <img src="docs/images/skillret-benchmark.png" alt="On the public SkillRet benchmark, the finder's keyword ranking scores above the BM25 keyword baseline (51.69) and below the best off-the-shelf embedding model in the paper (70.26), which needs a model.">
 </picture>
 
 ## Commands
 
 ```
-python3 scripts/find_skills.py --phrase "implementation plan"           # exact phrase in the whole SKILL.md of every skill
+python3 scripts/find_skills.py --phrase "implementation plan"           # exact phrase in every SKILL.md, then its reference files
 python3 scripts/find_skills.py --task "heap snapshot memory leak"        # keyword ranking
 python3 scripts/find_skills.py --list                                   # the whole inventory
 python3 scripts/find_skills.py --toc [FOLDER|SKILL] [--kind names|sentence|description|headers|files]   # tables of contents
-python3 scripts/find_skills.py --phrase "..." --toc   # the hits as sections
+python3 scripts/find_skills.py --phrase "..." --toc   # the hits as sections (SKILL.md only)
 python3 scripts/find_skills.py --enable NAME --into DIR                 # copy a skill into DIR/.claude/skills for one run
-python3 scripts/find_skills.py --phrase "..." --only DIR                # search DIR/<name>/SKILL.md alone, as in the example
+python3 scripts/find_skills.py --phrase "..." --only DIR                # search only the skills in DIR, as in the example
 ```
 
 `--phrase` is the recommended lookup and the one the `CLAUDE.md` block uses; `--toc` (every skill on one line, grouped by
