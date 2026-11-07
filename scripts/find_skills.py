@@ -21,10 +21,10 @@ SKILL.md and references/. It finds candidates; a model reading them decides.
 Up to 5 skills that hold it only in their reference files follow, with file:line. When no SKILL.md holds the phrase those
 come first; then it says how many skills hold each word and lists the 10 nearest by the --task ranking.
 A phrase search that finds skills ends with the best match: why it matched (where the phrase sits), when to use it, its first lines,
-its reference files, and where to read. With --for "<one sentence about the task>" one cheap model call (Claude Code, no tools)
-reads the first three hits against that sentence and picks one or says none fits (SKILL_FINDER_EXPLAIN=0 turns it off).
+its reference files, and where to read.
+It calls no model, starts no process and opens no connection; only --enable and --remove write, inside the folder you name.
 """
-import argparse, hashlib, json, math, os, re, shlex, shutil, subprocess, sys, tempfile, time
+import argparse, hashlib, json, math, os, re, shutil, sys
 from pathlib import Path
 
 SKIP_DIRS = {"node_modules", ".git", "__pycache__", "_archived", "synced", "fixtures", "evals", "tests", "test"}
@@ -34,14 +34,6 @@ STOP = set("a an and are as at be by do for from how in into is it its of on or 
 
 PHRASE_LIMIT = 40        # a phrase search lists at most this many skills, three short lines each
 OPEN_LINES = 20          # ... and ends with the first lines of the best match's SKILL.md, so reading it starts in the same result
-WHY_CANDIDATES = int(os.environ.get("SKILL_FINDER_WHY_HITS", 3))     # --for: a model reads this many of the first hits and says which fits the task, or that none does
-WHY_BODY_LINES = int(os.environ.get("SKILL_FINDER_WHY_LINES", 25))   # ... with this many body lines of each
-WHY_TIMEOUT = 90         # seconds for that call
-WHY_MAX_CALLS = 6        # model calls for one --for sentence; after that the plain reason only
-WHY_SYSTEM = ("You match a task to an installed skill using only the text you are given. Answer with one JSON object and nothing else: "
-              '{"pick": "<the exact skill name, or NONE>", "why": "<one or two sentences>"}. Pick a skill only if its own text says it is '
-              "for this kind of work, and quote its words in why. If none clearly fits, pick NONE and say what is missing. A wrong pick "
-              "is worse than NONE.")
 CLOSEST = 10            # a phrase that matches nothing lists this many skills nearest by words,
 CLOSEST_FULL = 3        # the first of them with the start of the description, the rest as a name and a path
 GENERIC_SHARE = 0.20     # a task word found in over a fifth of the skills' texts says little about which skill fits
@@ -470,89 +462,21 @@ def why_plain(detail, line):
     for ph, (in_name, in_desc, n) in detail.items():
         where = " and ".join(w for w, ok in (("its name", in_name), ("its description", in_desc)) if ok)
         times = f"{n} time{'s' if n != 1 else ''} in SKILL.md" if n else ""
-        bits.append(f'"{ph}" is in ' + ((where + (f" and {times}" if times else "")) if where else times))
-    return "; ".join(bits) + (f' (line {line[0]}: "{line[1]}")' if line else "")
+        bits.append((f'"{ph}" is in {where}' + (f" and {times}" if times else "") if where
+                     else f'"{ph}" occurs {times}, not in its name or description')
+                    + (f' (line {line[0]}: "{line[1]}")' if line and line[2] == ph else ""))
+    return "; ".join(bits)
 
-def log_cost(rec):
-    path = os.environ.get("SKILL_FINDER_COST_LOG")
-    if path:
-        try:
-            with open(path, "a") as f: f.write(json.dumps(rec) + "\n")
-        except OSError: pass
+def best_match(cands):
+    """What a phrase search ends with: the first hit, why it matched, and where reading starts."""
+    _, e, found, line, detail = cands[0]
+    return dict(name=e["name"], path=str(e["dir"] / "SKILL.md"), plain=why_plain(detail, line), use_when=use_when(e),
+                lines=body_lines(e, OPEN_LINES), references=[str(f.relative_to(e["dir"])) for f in doc_files(e["dir"])[1:]])
 
-def ask_model(for_text, cands):
-    """--for: one call through Claude Code (`claude -p`, no tools, no session kept) that reads the first hits and says which fits the task
-    in one sentence, or NONE. Returns {pick, why, cost, seconds} or {error}; None when it is switched off or already inside such a call.
-    Same sentence and same hits: the answer is cached. At most WHY_MAX_CALLS calls for one sentence. Env: SKILL_FINDER_EXPLAIN=0 (off),
-    SKILL_FINDER_MODEL (haiku), SKILL_FINDER_CLAUDE (the command), SKILL_FINDER_COST_LOG (a file that gets one JSON line per call)."""
-    if os.environ.get("SKILL_FINDER_EXPLAIN") == "0" or os.environ.get("SKILL_FINDER_NESTED"): return None
-    names = [h[1]["name"] for h in cands]
-    blocks = [f"### {i}. {h[1]['name']}\ndescription: {whole(' '.join(h[1]['description'].split()))}\nfirst lines:\n" + "\n".join(body_lines(h[1], WHY_BODY_LINES))
-              for i, h in enumerate(cands, 1)]
-    prompt = f"Task, in one sentence, from the person doing it: {for_text}\n\nCandidate skills (found by a phrase search):\n\n" + "\n\n".join(blocks)
-    cache = Path(tempfile.gettempdir()) / f"skill-finder-why-{os.getuid()}"
-    cache.mkdir(exist_ok=True)
-    done = cache / (hashlib.sha1(prompt.encode()).hexdigest()[:24] + ".json")
-    if done.is_file():
-        try: return {**json.loads(done.read_text()), "cached": True}
-        except ValueError: pass
-    count = cache / ("calls-" + hashlib.sha1(for_text.encode()).hexdigest()[:12])
-    used = int(count.read_text() or 0) if count.is_file() else 0
-    if used >= WHY_MAX_CALLS: return {"error": f"{WHY_MAX_CALLS} model reasons already given for this task sentence"}
-    count.write_text(str(used + 1))
-    cmd = shlex.split(os.environ.get("SKILL_FINDER_CLAUDE", "claude")) + [
-        "-p", "--model", os.environ.get("SKILL_FINDER_MODEL", "haiku"), "--tools", "", "--disable-slash-commands", "--strict-mcp-config",
-        "--no-session-persistence", "--max-budget-usd", "0.05", "--output-format", "json", "--system-prompt", WHY_SYSTEM]
-    t0 = time.time()
-    try:
-        with tempfile.TemporaryDirectory() as wd:
-            r = subprocess.run(cmd, input=prompt, capture_output=True, text=True, timeout=WHY_TIMEOUT, cwd=wd, env={**os.environ, "SKILL_FINDER_NESTED": "1"})
-    except (subprocess.TimeoutExpired, OSError) as ex:
-        res = {"error": type(ex).__name__, "seconds": round(time.time() - t0, 1), "cands": names}
-        log_cost(res); return res
-    secs = round(time.time() - t0, 1)
-    try:
-        env = json.loads(r.stdout); text, cost = str(env.get("result", "")), env.get("total_cost_usd", 0)
-    except ValueError:
-        text, cost = r.stdout, 0
-    m = re.search(r"\{.*\}", text, re.S)
-    try: ans = json.loads(m.group(0)) if m and r.returncode == 0 else {}
-    except ValueError: ans = {}
-    pick = str(ans.get("pick", "")).strip()
-    if not pick or (pick != "NONE" and pick not in names):
-        res = {"error": f"no usable answer (exit {r.returncode})", "seconds": secs, "cost": cost, "cands": names}
-        log_cost(res); return res
-    res = {"pick": pick, "why": " ".join(str(ans.get("why", "")).split())[:400], "cost": cost, "seconds": secs, "cands": names}
-    log_cost(res)
-    try: done.write_text(json.dumps(res))
-    except OSError: pass
-    return res
-
-def best_match(cands, for_text):
-    """What a phrase search ends with: the best match, why, and where reading starts. Without --for it is the first hit; with it a model
-    may pick another of the first WHY_CANDIDATES or say that none fits."""
-    top = cands[:WHY_CANDIDATES]
-    fit = ask_model(for_text, top) if for_text else None
-    names = [h[1]["name"] for h in top]
-    i = names.index(fit["pick"]) if fit and fit.get("pick") in names else 0
-    _, e, found, line, detail = top[i]
-    none = bool(fit and fit.get("pick") == "NONE")
-    return dict(name=e["name"], path=str(e["dir"] / "SKILL.md"), rank=i + 1, plain=why_plain(detail, line), use_when=use_when(e),
-                lines=[] if none else body_lines(e, OPEN_LINES), references=[str(f.relative_to(e["dir"])) for f in doc_files(e["dir"])[1:]],
-                fit=fit, none=none, considered=len(top))
-
-def print_best(b, for_text):
-    fit = b["fit"]
+def print_best(b):
     print()
-    print((f'Best by the search: ' if b["none"] else 'Best match: ') + f'{b["name"]}  {b["path"]}' + (f'  (hit {b["rank"]}, picked by the model)' if b["rank"] > 1 else ""))
+    print(f'Best match: {b["name"]}  {b["path"]}')
     print(f'Why: {b["plain"]}')
-    if fit and "pick" in fit:
-        print(f'Fit (a model read the first {b["considered"]} hits against "{for_text}"): ' + ("none clearly fits. " if b["none"] else "") + fit["why"])
-    elif fit:
-        print(f'Fit: not available ({fit["error"]}).')
-    if b["none"]:
-        print("No skill clearly fits: search again with other words, or open the best match only if it looks right to you.")
-        return
     print(f'Description: {b["use_when"]}')
     if b["lines"]:
         print("First lines of SKILL.md:"); [print(("  " + ln) if ln else "") for ln in b["lines"]]
@@ -624,7 +548,7 @@ def reference_hits(entries, pats, skip):
     out.sort(key=lambda h: h[0])
     return out
 
-def phrase_search(entries, phrases, limit, as_json, for_text="", toc=False):
+def phrase_search(entries, phrases, limit, as_json, toc=False):
     """`grep -il` over the whole SKILL.md of every skill, but ranked (so the shown ones do not depend on directory order) and
     compact: a phrase in the name first, then in the description, then how often it occurs. Several phrases are alternatives; a
     skill that holds more of them comes first. Then up to REF_SHOWN skills that hold a phrase only in their reference files, with
@@ -648,7 +572,7 @@ def phrase_search(entries, phrases, limit, as_json, for_text="", toc=False):
                 m = pt.search(text, body_from)                  # a match in the frontmatter is the description, shown above it
                 if m and line is None:
                     at = text.count("\n", 0, m.start())
-                    line = (at + 1, " ".join(text.splitlines()[at].split())[:140])
+                    line = (at + 1, " ".join(text.splitlines()[at].split())[:140], ph)
         if found: hits.append(((-len(found), -in_name, -in_desc, -min(count, 5), e["name"]), e, found, line, detail))
     hits.sort(key=lambda h: h[0])
     shown = hits[:limit]
@@ -667,7 +591,7 @@ def phrase_search(entries, phrases, limit, as_json, for_text="", toc=False):
                   for t, p in ((t, pattern(t)) for t in counts)}
     nearest = near[:CLOSEST]
     shown_near = [r for r in near if r["path"] not in {x["path"] for x in ref_rows}][:CLOSEST]      # a skill shown above is not listed twice
-    best = best_match(hits, for_text) if hits and not toc else None
+    best = best_match(hits) if hits and not toc else None
     sections = phrase_sections(shown) if toc else None
     if as_json:
         out = dict(phrases=phrases, scanned=len(entries), matched=len(hits), shown=len(rows), candidates=rows)
@@ -708,13 +632,17 @@ def phrase_search(entries, phrases, limit, as_json, for_text="", toc=False):
     if ref_rows:
         print(f"\nOnly in reference files ({len(refs)} skill(s) whose SKILL.md does not contain it{more}):")
         print_reference_rows(ref_rows)
-    print_best(best, for_text)
+    print_best(best)
 
 def print_reference_rows(rows):
     for r in rows:
         print(f"- {r['name']}  [{r['status']}]  {r['path']}")
         print(f"   {r['description']}")
         print(f"   :{r['match']}")
+
+def plain_name(n):
+    """A skill name that is one folder name, so DIR/.claude/skills/<name> stays inside DIR/.claude/skills."""
+    return n not in ("", ".", "..") and Path(n).name == n and "\\" not in n
 
 def enable(entries, names, into, source):
     """Copy skills into DIR/.claude/skills so a session started in DIR can invoke them, whatever their plugin's
@@ -729,6 +657,7 @@ def enable(entries, names, into, source):
         if len(cands) > 1: print(f"{n}: {len(cands)} different skills share this name; took the first ({cands[0]['dir']}); "
                                  f"others: {', '.join(str(c['dir']) for c in cands[1:])}; use --source with part of its source or path to choose", file=sys.stderr)
         e, dest = cands[0], root / n
+        if not plain_name(n): print(f"{n}: not a plain folder name; left alone", file=sys.stderr); continue
         if dest.exists() and n not in done: print(f"{dest} exists and is not ours; left alone", file=sys.stderr); continue
         shutil.rmtree(dest, ignore_errors=True)
         shutil.copytree(e["dir"], dest, ignore=shutil.ignore_patterns(*SKIP_DIRS))
@@ -744,6 +673,7 @@ def remove(into):
     manifest = root / ".skill-finder.json"
     if not manifest.exists(): print("nothing to remove", file=sys.stderr); return
     for n in json.loads(manifest.read_text()):
+        if not plain_name(n): print(f"{n}: not a plain folder name; left alone", file=sys.stderr); continue
         shutil.rmtree(root / n, ignore_errors=True); print(f"removed {n}")
     manifest.unlink()
 
@@ -752,7 +682,6 @@ def main():
     ap.add_argument("--task", default=""); ap.add_argument("--top", type=int, default=8)
     ap.add_argument("--phrase", action="append", default=[], help="an exact phrase to look for in every SKILL.md, then in reference files (repeatable: alternatives)")
     ap.add_argument("--limit", type=int, default=PHRASE_LIMIT, help="--phrase: how many skills to list")
-    ap.add_argument("--for", dest="for_text", default="", help="--phrase: one sentence on what you are doing; a model reads the first hits against it and says which fits, or none")
     ap.add_argument("--root", action="append", default=[]); ap.add_argument("--list", action="store_true")
     ap.add_argument("--only", action="append", default=[], metavar="DIR",
                     help="scan only DIR/<name>/SKILL.md (repeatable): no config dirs, no project skills; for tests and fixtures")
@@ -766,7 +695,7 @@ def main():
     if a.kind and a.phrase: sys.exit("--kind goes with --toc alone")
     if a.kind and a.toc is None: sys.exit("--kind needs --toc")
     if a.toc is not None:
-        for flag in (a.for_text and "--for", a.enable and "--enable", a.remove and "--remove"):
+        for flag in (a.enable and "--enable", a.remove and "--remove"):
             if flag: sys.exit(f"--toc goes alone or with --phrase, not with {flag}")
         if a.phrase and a.toc != "all": sys.exit("--phrase --toc takes no WHAT")
         if not a.phrase:
@@ -782,7 +711,7 @@ def main():
     if a.toc is not None and not a.phrase: return toc(entries, a.toc, a.kind, a.json)
     if a.phrase:
         if a.task: sys.exit("use --phrase or --task, not both")
-        return phrase_search(entries, a.phrase, a.limit, a.json, a.for_text, a.toc is not None)
+        return phrase_search(entries, a.phrase, a.limit, a.json, a.toc is not None)
     if a.list or not a.task:
         for e in entries:
             print(f"{e['status']:<32} {e['source']:<40} {e['name']:<36} {e['dir']}")

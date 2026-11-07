@@ -3,8 +3,8 @@
 ## Rework the best-match idea
 
 State: after every `--phrase` search that finds something, the finder prints a best-match block (why it matched, description, first
-~20 lines of SKILL.md, reference files, "Read <path>, then follow it"). With `--for "<one sentence>"` one Haiku call adds a fit reason
-or NONE. Both are in `scripts/find_skills.py`; the block has no off switch (`SKILL_FINDER_EXPLAIN=0` turns off only the model call).
+~20 lines of SKILL.md, reference files, "Read <path>, then follow it"). The block has no off switch. A `--for "<one sentence>"` option
+that added one Haiku call's fit reason or NONE was removed on 2026-11-07, so that the script calls no model and starts no process.
 
 What the experiments showed (15 runs each, Haiku, tasks with a failing gate; the experiments are not in this repository): the block
 with a model reason passed 5 of 15 runs (model reads 3 hits) and 3 of 15 (10 hits), the block without a model 8 of 15, against 9 of 15
@@ -16,9 +16,8 @@ Ideas to rework, each untested and each needs its own bar written before the run
 - A lighter block (name, one reason, path; no body lines) to cut the tokens per lookup.
 - Recall is the limit: the task's skill is often outside the first hits, so neither block nor model can help there. Improve what
   reaches the first hits before improving what is printed about them.
-- Pull the three changes apart (fit-sentence instruction, printed block, model call); the experiments changed all three at once.
+- Pull the changes apart (fit-sentence instruction, printed block); the experiments also changed the model call, now removed.
 - If the token cap is raised, that is its own test, not a rescue of this one.
-- Drop `--for` if the model reason is not coming back.
 
 ## Real tasks
 
@@ -51,7 +50,8 @@ matters, so it would need the same test as the original instruction (the should-
 The finder cannot see them: `dataviz`, for example, has no `SKILL.md` on disk (Claude Code extracts it to a temp folder when it is invoked),
 so `--phrase chart --limit 60` finds nothing for it. A model sees such a skill in its own listing, so the gap hurts only when the listing
 shows it as a bare name or not at all. Find out whether there is a way to list the bundled skills (the init event of `claude -p` names
-them) and, if so, add them to the inventory as "bundled, not on disk".
+them) and, if so, add them to the inventory as "bundled, not on disk". The script starts no process, so the list has to come from
+outside it: a file the user or a caller writes, read like `scripts/roots`.
 
 ## What the block says to do when a lookup finds nothing
 

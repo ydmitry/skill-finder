@@ -394,11 +394,6 @@ class PhraseToc(unittest.TestCase):
         self.assertEqual(len(rows), 2)
         self.assertIn("the best 2 are shown", out)
 
-    def test_phrase_toc_with_for_exits_1(self):
-        code, out, err = self.phrase("goal loop", "--toc", "--for", "x")
-        self.assertEqual((code, out), (1, ""))
-        self.assertIn("--toc goes alone or with --phrase, not with --for", err)
-
     def test_phrase_toc_with_what_exits_1(self):
         code, _, err = self.phrase("goal loop", "--toc", "user")
         self.assertEqual(code, 1)
@@ -543,8 +538,8 @@ class Tables(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("--toc goes alone or with --phrase, not with --list", err)
 
-    def test_toc_with_limit_top_for_exits_1(self):
-        for flag, val in (("--limit", "5"), ("--top", "3"), ("--for", "x")):
+    def test_toc_with_limit_top_exits_1(self):
+        for flag, val in (("--limit", "5"), ("--top", "3")):
             code, _, err = toc(flag, val)
             self.assertEqual(code, 1, flag)
             self.assertIn(f"--toc goes alone or with --phrase, not with {flag}", err)

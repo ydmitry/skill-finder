@@ -3,6 +3,7 @@
 Every query is written the way SKILL.md asks: the words a skill's description would use for what it does. A skill listed
 in FIRST must rank first; one in TOP3 must rank in the first three. Common-word and nonsense queries must come back with
 LOW CONFIDENCE, and a clear first hit must not."""
+import ast
 import json
 import os
 import re
@@ -15,6 +16,17 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 FINDER = HERE.parent / "scripts" / "find_skills.py"
 FIXTURES = HERE / "fixtures" / "skills"
+NO_PROCESS_OR_NETWORK = {"subprocess", "socket", "_socket", "ssl", "urllib", "http", "ctypes", "webbrowser", "pty", "socketserver",
+                         "ftplib", "smtplib", "asyncio", "multiprocessing", "concurrent"}
+# Runs the finder in this interpreter, then names which of the modules in argv[1] it had loaded.
+LOADED = """import runpy, sys
+watched = set(sys.argv[1].split(","))
+sys.argv = sys.argv[2:]
+try: runpy.run_path(sys.argv[0], run_name="__main__")
+except SystemExit as e:
+    if e.code not in (None, 0): raise
+sys.stderr.write("\\nloaded:" + "".join(" " + m for m in sorted({m.split(".")[0] for m in sys.modules} & watched)) + "\\n")
+"""
 
 FIRST = {
     "bounded loop until the check command exits 0": "goal-loop",
@@ -490,21 +502,27 @@ class SameSkillAgain(unittest.TestCase):
                 self.assertEqual(out.returncode, 0, out.stderr)
                 self.assertIn(word, (Path(into) / ".claude" / "skills" / "deploy" / "SKILL.md").read_text())
 
+    def test_enable_copies_only_under_the_skills_folder(self):
+        with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as into:
+            self.write(Path(a) / "odd", "../escaped", "Crosses roads.")
+            out = subprocess.run([sys.executable, str(FINDER), "--only", a, "--enable", "../escaped", "--into", into],
+                                 capture_output=True, text=True)
+            self.assertFalse((Path(into) / ".claude" / "escaped").exists())
+            self.assertIn("../escaped: not a plain folder name; left alone", out.stderr)
 
-STUB = """import json, os, sys
-open(os.environ["STUB_COUNT"], "a").write("x")
-sys.stdin.read()
-mode = os.environ.get("STUB_MODE", "alpha")
-if mode == "fail": sys.exit(3)
-if mode == "garbage": print(json.dumps({"result": "no json here"})); sys.exit(0)
-ans = {"pick": "NONE", "why": "nothing fits"} if mode == "none" else {"pick": mode, "why": "its text says it is for crossing roads"}
-print(json.dumps({"result": json.dumps(ans), "total_cost_usd": 0.002}))
-"""
+    def test_remove_deletes_only_under_the_skills_folder(self):
+        with tempfile.TemporaryDirectory() as into:
+            skills = Path(into) / ".claude" / "skills"
+            skills.mkdir(parents=True)
+            (Path(into) / ".claude" / "victim").mkdir()
+            (skills / ".skill-finder.json").write_text(json.dumps({"../victim": "x"}))
+            out = subprocess.run([sys.executable, str(FINDER), "--remove", "--into", into], capture_output=True, text=True)
+            self.assertTrue((Path(into) / ".claude" / "victim").exists())
+            self.assertIn("../victim: not a plain folder name; left alone", out.stderr)
 
 
 class BestMatch(unittest.TestCase):
-    """A phrase search ends with the best match (why, first lines, references, where to read); --for adds a model's reason. The model is
-    a stub script here: no model is called."""
+    """A phrase search ends with the best match: why, first lines, references, where to read. No model is called."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -518,28 +536,17 @@ class BestMatch(unittest.TestCase):
         (self.skills / "alpha" / "references").mkdir()
         for i in range(10):
             (self.skills / "alpha" / "references" / f"r{i}.md").write_text(f"# r{i}\n")
-        (t / "tmpdir").mkdir()
-        (t / "stub.py").write_text(STUB)
-        self.count, self.cost = t / "count", t / "cost.log"
-        self.env = {**os.environ, "SKILL_FINDER_CLAUDE": f"{sys.executable} {t / 'stub.py'}", "STUB_COUNT": str(self.count),
-                    "SKILL_FINDER_COST_LOG": str(self.cost), "TMPDIR": str(t / "tmpdir")}
-        self.env.pop("SKILL_FINDER_NESTED", None)
-        self.env.pop("SKILL_FINDER_EXPLAIN", None)
 
     def tearDown(self):
         self.tmp.cleanup()
 
-    def run_finder(self, *args, mode="alpha", env=None):
+    def run_finder(self, *args):
         cmd = [sys.executable, str(FINDER), "--only", str(self.skills), "--phrase", "zebra crossing", *args]
-        return subprocess.run(cmd, capture_output=True, text=True, env={**self.env, "STUB_MODE": mode, **(env or {})}).stdout
+        return subprocess.run(cmd, capture_output=True, text=True)
 
-    def calls(self):
-        return len(self.count.read_text()) if self.count.is_file() else 0
-
-    def test_a_phrase_search_ends_with_the_best_match_and_calls_no_model(self):
-        text = self.run_finder()
+    def test_a_phrase_search_ends_with_the_best_match(self):
+        text = self.run_finder().stdout
         self.assertIn("Best match: alpha", text)
-        self.assertIn('Why: "zebra crossing" is in', text)
         self.assertIn("Description: Use when you cross a road.", text)
         self.assertNotIn("It also helps", text.split("Description:")[1].splitlines()[0])
         self.assertIn("First lines of SKILL.md:", text)
@@ -550,55 +557,65 @@ class BestMatch(unittest.TestCase):
         self.assertIn("(+2 more)", text)
         self.assertTrue(text.rstrip().endswith(f"Read {self.skills / 'alpha' / 'SKILL.md'}, then follow it; search again only if it does not fit."))
         self.assertNotIn("Fit", text)
-        self.assertEqual(self.calls(), 0)
 
-    def test_for_adds_a_models_reason_and_the_same_question_is_asked_once(self):
-        text = self.run_finder("--for", "cross a road")
-        self.assertIn('Fit (a model read the first 2 hits against "cross a road"): its text says it is for crossing roads', text)
-        self.assertEqual(self.calls(), 1)
-        self.run_finder("--for", "cross a road")
-        self.assertEqual(self.calls(), 1)                                   # cached
-        self.assertEqual(len(self.cost.read_text().splitlines()), 1)
+    def test_a_body_only_hit_says_where_it_is_not(self):
+        text = self.run_finder().stdout
+        self.assertIn('Why: "zebra crossing" occurs 1 time in SKILL.md, not in its name or description (line 7:', text)
 
-    def test_the_model_may_pick_the_second_hit(self):
-        text = self.run_finder("--for", "cross a road", mode="beta")
-        self.assertIn("Best match: beta", text)
-        self.assertIn("(hit 2, picked by the model)", text)
-        self.assertIn(f"Read {self.skills / 'beta' / 'SKILL.md'}", text)
-
-    def test_none_says_no_skill_clearly_fits_and_sends_no_one_to_read(self):
-        text = self.run_finder("--for", "cross a road", mode="none")
-        self.assertIn("none clearly fits", text)
-        self.assertIn("No skill clearly fits", text)
-        self.assertNotIn("First lines", text)
-        self.assertNotIn("then follow it", text)
-
-    def test_a_failing_model_or_a_made_up_name_leaves_the_plain_best_match(self):
-        for mode in ("fail", "garbage", "ghost"):
-            text = self.run_finder("--for", f"cross a road {mode}", mode=mode)
-            self.assertIn("Fit: not available", text, mode)
-            self.assertIn("Best match: alpha", text, mode)
-            self.assertIn("then follow it", text, mode)
-
-    def test_no_model_inside_a_model_call_and_none_when_switched_off(self):
-        for env in ({"SKILL_FINDER_NESTED": "1"}, {"SKILL_FINDER_EXPLAIN": "0"}):
-            text = self.run_finder("--for", "cross a road", env=env)
-            self.assertNotIn("Fit", text)
-            self.assertIn("Best match: alpha", text)
-        self.assertEqual(self.calls(), 0)
-
-    def test_the_number_of_hits_the_model_reads_can_be_set(self):
-        text = self.run_finder("--for", "cross a road", env={"SKILL_FINDER_WHY_HITS": "1"})
-        self.assertIn('against "cross a road"', text)
-        self.assertIn("first 1 hits", text)
-        text = self.run_finder("--for", "cross a road two", mode="beta", env={"SKILL_FINDER_WHY_HITS": "1"})
-        self.assertIn("Fit: not available", text)                           # beta was not among the one hit the model was shown
+    def test_for_is_not_an_option(self):
+        out = self.run_finder("--for", "cross a road")
+        self.assertEqual(out.returncode, 2)
+        self.assertIn("unrecognized arguments: --for", out.stderr)
 
     def test_json_carries_the_best_match(self):
-        out = json.loads(self.run_finder("--json", "--for", "cross a road"))
+        out = json.loads(self.run_finder("--json").stdout)
         self.assertEqual(out["best"]["name"], "alpha")
-        self.assertEqual(out["best"]["fit"]["pick"], "alpha")
         self.assertEqual(len(out["best"]["lines"]), 20)
+        self.assertFalse({"fit", "none", "considered", "rank"} & set(out["best"]))
+
+    def test_several_phrases_put_the_line_after_its_own_phrase(self):
+        with tempfile.TemporaryDirectory() as a:
+            (Path(a) / "mixed-traffic-light").mkdir()
+            (Path(a) / "mixed-traffic-light" / "SKILL.md").write_text(
+                "---\nname: mixed-traffic-light\ndescription: Covers a zebra crossing too.\n---\n\n# mixed\nred light and pelican crossing\n")
+            cmd = [sys.executable, str(FINDER), "--only", a, "--phrase", "pelican crossing", "--phrase", "traffic light", "--phrase", "zebra crossing"]
+            why = next(ln for ln in subprocess.run(cmd, capture_output=True, text=True).stdout.splitlines() if ln.startswith("Why:"))
+            self.assertIn('not in its name or description (line 7: "red light and pelican crossing"); "traffic light"', why)
+            self.assertTrue(why.endswith('"zebra crossing" is in its description and 1 time in SKILL.md'), why)
+
+    def test_the_script_imports_nothing_that_starts_a_process_or_opens_a_connection(self):
+        tree = ast.parse(FINDER.read_text())
+        imported = {a.name.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
+        imported |= {n.module.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module}
+        self.assertFalse(imported & (NO_PROCESS_OR_NETWORK | {"importlib", "shlex", "tempfile"}), imported)
+        names = {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)} | {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)}
+        names |= {a.name for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) for a in n.names}
+        self.assertFalse({x for x in names if x in ("system", "popen", "fork", "forkpty", "__import__", "startfile")
+                          or x.startswith(("execv", "execl", "spawnv", "spawnl", "posix_spawn"))})
+
+    def test_a_search_loads_no_process_or_network_module(self):
+        for args in (["--phrase", "zebra crossing"], ["--phrase", "no such words"], ["--task", "cross a road"], ["--toc"], ["--list"]):
+            out = subprocess.run([sys.executable, "-c", LOADED, ",".join(NO_PROCESS_OR_NETWORK), str(FINDER), "--only", str(self.skills), *args],
+                                 capture_output=True, text=True)
+            self.assertEqual(out.returncode, 0, out.stderr)
+            self.assertEqual(out.stderr.splitlines()[-1], "loaded:", args)
+
+    def test_only_enable_and_remove_write_files(self):
+        tree = ast.parse(FINDER.read_text())
+        writers = {"write_text", "write_bytes", "mkdir", "makedirs", "copytree", "copyfile", "copy2", "rmtree", "unlink", "rename",
+                   "touch", "rmdir", "symlink_to", "hardlink_to", "chmod", "truncate"}
+        def writes(node):
+            for n in ast.walk(node):
+                if not isinstance(n, ast.Call): continue
+                f = n.func
+                if isinstance(f, ast.Attribute) and (f.attr in writers or isinstance(f.value, ast.Name) and f"{f.value.id}.{f.attr}"
+                                                     in ("os.remove", "os.replace", "shutil.move", "shutil.copy")): return True
+                if (isinstance(f, ast.Name) and f.id == "open" or isinstance(f, ast.Attribute) and f.attr == "open") and any(
+                        isinstance(m, ast.Constant) and isinstance(m.value, str) and set(m.value) & set("wax+")
+                        for m in n.args[1:2] + [k.value for k in n.keywords if k.arg == "mode"]): return True
+            return False
+        top = [n.name if isinstance(n, ast.FunctionDef) else type(n).__name__ for n in tree.body if writes(n)]
+        self.assertEqual(sorted(top), ["enable", "remove"])
 
 
 if __name__ == "__main__":
