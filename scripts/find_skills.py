@@ -101,9 +101,42 @@ def plugin_of(skill_dir, stop):
         p = p.parent
     return None
 
+def git_root(folder):
+    """The repo root Claude Code finds for a folder, without running git: the nearest folder up that holds .git. A linked worktree's
+    .git file leads (gitdir:, then commondir) to the main checkout. None outside git."""
+    for d in [folder, *folder.parents]:
+        g = d / ".git"
+        if g.is_dir(): return d
+        if g.is_file():
+            try:
+                gitdir = d / g.read_text().split("gitdir:", 1)[1].strip()
+                common = (gitdir / (gitdir / "commondir").read_text().strip()).resolve()
+                return common.parent if common.name == ".git" else d
+            except Exception: return d
+    return None
+
+def loads_here(rec, cwd, root):
+    """An install record a session started in cwd applies: user (or managed) scope always; local or project scope when cwd is its
+    projectPath or in the same git repo, a linked worktree included. Claude Code compares the paths as text: only on Windows does it
+    retry another spelling, which this does not copy."""
+    if rec.get("scope") not in ("local", "project"): return True
+    if not rec.get("projectPath"): return False
+    p = Path(rec["projectPath"]).resolve()
+    return p == cwd or (root is not None and git_root(p) == root)
+
+def plugin_states(user, cwd, root):
+    """enabledPlugins as a session started in cwd reads them, later ones winning: the user's settings.json, the launch folder's
+    .claude/settings.json (never a parent's), then settings.local.json there and at the repo root, where Claude Code keeps it."""
+    on = dict(user)
+    for f in (cwd / ".claude" / "settings.json", cwd / ".claude" / "settings.local.json", (root or cwd) / ".claude" / "settings.local.json"):
+        try: on |= json.loads(f.read_text()).get("enabledPlugins", {})
+        except Exception: pass
+    return on
+
 def collect(extra_roots, only=()):
     """`only`: scan these folders alone (skills/<name>/SKILL.md, one level), nothing from the config dirs or the cwd."""
-    entries = []
+    entries, cwd = [], Path.cwd().resolve()
+    root = git_root(cwd)
     def add(sdir, source, status, rank, plugin=None):
         try: text = (sdir / "SKILL.md").read_text(errors="replace")
         except Exception: return
@@ -114,11 +147,14 @@ def collect(extra_roots, only=()):
         enabled = {}
         try: enabled = json.loads((cfg / "settings.json").read_text()).get("enabledPlugins", {})
         except Exception: pass
-        installed, install_paths = {}, set()
+        on = plugin_states(enabled, cwd, root)
+        installed, install_paths, elsewhere = {}, set(), {}     # elsewhere: key -> its projects, when no install of it loads here
         try:
             installed = json.loads((cfg / "plugins" / "installed_plugins.json").read_text()).get("plugins", {})
             for k, v in installed.items():
                 for rec in v: install_paths.add(str(Path(rec["installPath"]).resolve()))
+                if v and not any(loads_here(rec, cwd, root) for rec in v):
+                    elsewhere[k] = sorted({Path(rec["projectPath"]).name for rec in v if rec.get("projectPath")})
         except Exception: pass
         for sdir in top_level_skills(cfg / "skills"): add(sdir, "user", "user skill", 0)
         pl = cfg / "plugins"
@@ -126,16 +162,16 @@ def collect(extra_roots, only=()):
             for sdir in walk_skills(pl / area):
                 rel = sdir.relative_to(pl / area).parts
                 market = rel[0]
-                pname = plugin_of(sdir, pl / area) or "?"
-                key = f"{pname}@{market}"
+                pname = plugin_of(sdir, pl / area) or "?"            # "?": no plugin.json, so group_of() names it by its folder
+                key = f"{rel[1] if pname == '?' and area == 'cache' and len(rel) > 2 else pname}@{market}"  # cache/<market>/<plugin>/
                 at_install = any(str(sdir.resolve()).startswith(ip + os.sep) for ip in install_paths)
-                if key in enabled and (at_install or area == "cache"):
-                    status = "plugin enabled" if enabled[key] else "plugin DISABLED"
+                if at_install and elsewhere.get(key): status = f"plugin installed for {', '.join(elsewhere[key])} only"
+                elif key in on and (at_install or area == "cache"):
+                    status = "plugin enabled" if on[key] else "plugin DISABLED"
                 elif at_install or key in installed: status = "plugin installed"
                 elif area == "cache": status = "plugin cached, not installed"
                 else: status = "marketplace only, not installed"
                 add(sdir, key, status, 1 if at_install else (2 if area == "cache" else 3), pname)
-    cwd = Path.cwd().resolve()
     for p in ([] if only else [cwd, *cwd.parents]):
         for sdir in top_level_skills(p / ".claude" / "skills"): add(sdir, f"project {p.name}", "project skill", 0)
     for o in only:
@@ -713,8 +749,9 @@ def main():
         if a.task: sys.exit("use --phrase or --task, not both")
         return phrase_search(entries, a.phrase, a.limit, a.json, a.toc is not None)
     if a.list or not a.task:
+        w = max([32, *(len(e["status"]) for e in entries)])        # "plugin installed for <project> only" can be longer
         for e in entries:
-            print(f"{e['status']:<32} {e['source']:<40} {e['name']:<36} {e['dir']}")
+            print(f"{e['status']:<{w}} {e['source']:<40} {e['name']:<36} {e['dir']}")
         print(f"\n{len(entries)} skills", file=sys.stderr); return
     terms = terms_of(a.task)
     ranked, pats, generic = rank(entries, terms)

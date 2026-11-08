@@ -46,8 +46,10 @@ Read tests/fixtures/skills/release-notes/SKILL.md, then follow it; search again 
 ```
 
 That is the repo's test fixtures. On your machine each hit shows its state, such as `user skill`, `project skill`, `plugin
-enabled`, `plugin DISABLED`, `marketplace only, not installed`, or `extra root` (a folder you added, which Claude Code itself
-does not load). The states come from `settings.json` and the install records and can disagree with a live
+enabled`, `plugin DISABLED`, `plugin installed for <project> only` (installed for another folder or repo, so it does not load
+here), `marketplace only, not installed`, or `extra root` (a folder you added, which Claude Code itself does not load). The
+states come from the install records and the settings a session started in the current folder reads: your `settings.json`, then
+that folder's `.claude/settings.json`, then `settings.local.json` there and at its git repo root. They can still disagree with a live
 session. A skill Claude Code does not load can be read from its path, or copied with `--enable NAME --into DIR` into
 `DIR/.claude/skills`, so a session started in `DIR` can invoke it (a plugin skill whose scripts use `CLAUDE_PLUGIN_ROOT` may
 not work from the copy; the finder warns).

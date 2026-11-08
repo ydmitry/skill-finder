@@ -421,13 +421,14 @@ class SameSkillAgain(unittest.TestCase):
             res = self.run_phrase(a)
             self.assertEqual(sorted(Path(c["path"]).parent.name for c in res["candidates"]), ["k8s-deploy", "netlify-deploy"])
 
-    def run_isolated(self, home, *args, config_dir=None):
+    def run_isolated(self, home, *args, config_dir=None, cwd=None):
         """The finder with HOME (and config_dir) as its only config dirs and no roots file, so nothing of this machine is in the result.
-        It runs in an empty folder outside HOME: run in HOME, HOME/.claude/skills would be read as a project's skills too."""
+        It runs in an empty folder outside HOME (or in cwd): run in HOME, HOME/.claude/skills would be read as a project's skills too."""
         env = {k: v for k, v in os.environ.items() if k != "CLAUDE_CONFIG_DIR"} | {"HOME": str(home), "SKILL_FINDER_ROOTS": str(Path(home) / "no-roots")}
         if config_dir: env["CLAUDE_CONFIG_DIR"] = str(config_dir)
-        with tempfile.TemporaryDirectory() as cwd:
-            out = subprocess.run([sys.executable, str(FINDER), *args, "--json", "--limit", "40"], capture_output=True, text=True, env=env, cwd=cwd)
+        with tempfile.TemporaryDirectory() as empty:
+            out = subprocess.run([sys.executable, str(FINDER), *args, "--json", "--limit", "40"], capture_output=True, text=True, env=env,
+                                 cwd=cwd or empty)
         assert out.returncode == 0, out.stderr
         return json.loads(out.stdout)
 
@@ -460,6 +461,135 @@ class SameSkillAgain(unittest.TestCase):
             self.write(plugins / "marketplaces" / "market" / "docs" / "skills" / "pdf", "pdf", "Fill, sign and merge pdf forms when crossing roads.")
             res = self.run_isolated(home, "--phrase", "crossing roads")
             self.assertEqual([c["name"] for c in res["candidates"]], ["pdf"])
+
+    def installs(self, home, records, enabled=None):
+        """installed_plugins.json with these {key: [record]} and, when given, the user settings' enabledPlugins."""
+        plugins = Path(home) / ".claude" / "plugins"
+        plugins.mkdir(parents=True, exist_ok=True)
+        (plugins / "installed_plugins.json").write_text(json.dumps({"version": 2, "plugins": records}))
+        if enabled is not None: (Path(home) / ".claude" / "settings.json").write_text(json.dumps({"enabledPlugins": enabled}))
+
+    def test_a_cached_plugin_without_plugin_json_is_named_by_its_cache_folder(self):
+        """cache/<market>/<plugin>/<version>/: with no plugin.json the folder names the plugin, so its install record and its
+        enabledPlugins entry apply (a disabled one read 'plugin installed' under the name ?@market)."""
+        with tempfile.TemporaryDirectory() as home:
+            install = Path(home) / ".claude" / "plugins" / "cache" / "market" / "docs" / "1.0"
+            self.write(install / "skills" / "pdf", "pdf", "Fill pdf forms when crossing roads.")
+            for on, state in ((False, "plugin DISABLED"), (True, "plugin enabled")):
+                self.installs(home, {"docs@market": [{"scope": "user", "installPath": str(install)}]}, {"docs@market": on})
+                (c,) = self.run_isolated(home, "--phrase", "crossing roads")["candidates"]
+                self.assertEqual((c["status"], c["source"]), (state, "docs@market"))
+
+    def scoped_tools(self, home, records, user=None):
+        """tools@market in the cache with these install records and user settings; returns state(cwd) -> its label there."""
+        install = Path(home) / ".claude" / "plugins" / "cache" / "market" / "tools" / "1.0"
+        if not install.exists(): self.plugin(install, "tools", "configure", "Set up the bot when crossing roads.")
+        self.installs(home, {"tools@market": [dict(r, installPath=str(install)) for r in records]}, user or {})
+        def state(cwd=None):
+            return next(c["status"] for c in self.run_isolated(home, "--phrase", "crossing roads", cwd=cwd)["candidates"]
+                        if c["name"] == "configure")
+        return state
+
+    @staticmethod
+    def settings(folder, name, on):
+        (folder / ".claude").mkdir(parents=True, exist_ok=True)
+        (folder / ".claude" / name).write_text(json.dumps({"enabledPlugins": {"tools@market": on}}))
+
+    def test_a_local_install_outside_git_loads_in_its_own_folder_only(self):
+        """Claude Code applies a local or project install when the session starts in its projectPath or in the same git repo. Outside
+        git that is the folder itself: a subfolder, or a sibling whose name starts the same, does not count."""
+        with tempfile.TemporaryDirectory() as home, tempfile.TemporaryDirectory() as top:
+            proj = Path(top).resolve() / "app"
+            for d in (proj / "sub", proj.parent / "app2"): d.mkdir(parents=True)
+            self.settings(proj, "settings.json", False)
+            self.settings(proj, "settings.local.json", True)                                   # the local file wins
+            only = "plugin installed for app only"
+            for scope in ("local", "project"):
+                state = self.scoped_tools(home, [{"scope": scope, "projectPath": str(proj)}])
+                self.assertEqual([state(c) for c in (None, proj, proj / "sub", proj.parent / "app2")], [only, "plugin enabled", only, only], scope)
+
+    def test_a_local_install_loads_anywhere_in_its_git_repo(self):
+        """In git the install counts anywhere under the same repo root, a linked worktree included (its .git file leads through
+        commondir to the main checkout), and the local settings file is the one at that root."""
+        with tempfile.TemporaryDirectory() as home, tempfile.TemporaryDirectory() as top:
+            repo, wt = Path(top).resolve() / "repo", Path(top).resolve() / "repo-wt"
+            (repo / ".git" / "worktrees" / "wt").mkdir(parents=True)
+            (repo / ".git" / "worktrees" / "wt" / "commondir").write_text("../..\n")
+            (repo / "web").mkdir()
+            wt.mkdir()
+            (wt / ".git").write_text(f"gitdir: {repo / '.git' / 'worktrees' / 'wt'}\n")
+            state = self.scoped_tools(home, [{"scope": "local", "projectPath": str(repo / "web")}])
+            self.settings(repo, "settings.local.json", True)
+            self.assertEqual([state(c) for c in (None, repo, repo / "web", wt)], ["plugin installed for web only"] + ["plugin enabled"] * 3)
+
+    def test_the_user_and_project_settings_merge_for_every_plugin(self):
+        """user settings < the launch folder's .claude/settings.json < settings.local.json, for every plugin: a project can switch a
+        user plugin on or off, and when the project files say nothing a project install keeps the user's value."""
+        with tempfile.TemporaryDirectory() as home, tempfile.TemporaryDirectory() as proj:
+            proj = Path(proj).resolve()
+            state = self.scoped_tools(home, [{"scope": "user"}], {"tools@market": False})
+            self.settings(proj, "settings.local.json", True)
+            self.assertEqual((state(), state(proj)), ("plugin DISABLED", "plugin enabled"))
+            state = self.scoped_tools(home, [{"scope": "project", "projectPath": str(proj)}], {"tools@market": True})
+            (proj / ".claude" / "settings.local.json").unlink()
+            self.assertEqual(state(proj), "plugin enabled")
+            self.settings(proj, "settings.json", False)
+            self.assertEqual(state(proj), "plugin DISABLED")                                   # the shared project file counts
+
+    def test_a_project_path_in_another_case_is_another_folder(self):
+        """Claude Code 2.1.319 compares the paths as text: only on Windows does it retry another spelling, so on macOS, whose disks
+        ignore case, a record for .../app does not load in .../App."""
+        with tempfile.TemporaryDirectory() as home, tempfile.TemporaryDirectory() as top:
+            proj = Path(top).resolve() / "App"
+            proj.mkdir()
+            state = self.scoped_tools(home, [{"scope": "local", "projectPath": str(proj.parent / "app")}])
+            self.settings(proj, "settings.local.json", True)
+            self.assertEqual(state(proj), "plugin installed for app only")
+
+    def test_a_subfolder_reads_its_own_settings_json_and_the_repo_roots_local_file(self):
+        """Started in a repo's subfolder, a session reads .claude/settings.json there, not at the root, and settings.local.json
+        both there and at the root, the root's winning."""
+        with tempfile.TemporaryDirectory() as home, tempfile.TemporaryDirectory() as top:
+            repo = Path(top).resolve() / "repo"
+            (repo / ".git").mkdir(parents=True)
+            (repo / "web").mkdir()
+            state = self.scoped_tools(home, [{"scope": "user"}], {"tools@market": False})
+            self.settings(repo, "settings.json", True)
+            self.assertEqual((state(repo), state(repo / "web")), ("plugin enabled", "plugin DISABLED"))
+            self.settings(repo / "web", "settings.local.json", True)
+            self.assertEqual(state(repo / "web"), "plugin enabled")
+            self.settings(repo, "settings.local.json", False)
+            self.assertEqual(state(repo / "web"), "plugin DISABLED")
+
+    def test_a_plugin_with_a_user_install_is_not_project_only(self):
+        with tempfile.TemporaryDirectory() as home:
+            state = self.scoped_tools(home, [{"scope": "user"}, {"scope": "local", "projectPath": "/x/app"}], {"tools@market": True})
+            self.assertEqual(state(), "plugin enabled")
+
+    def test_only_the_installed_copy_of_a_project_plugin_says_so(self):
+        """A marketplace copy of a project-only plugin never loads, so it does not claim to load in that project."""
+        with tempfile.TemporaryDirectory() as home:
+            state = self.scoped_tools(home, [{"scope": "local", "projectPath": "/x/app"}])
+            self.plugin(Path(home) / ".claude" / "plugins" / "marketplaces" / "market" / "plugins" / "tools", "tools", "extra",
+                        "Only in the marketplace when crossing roads.")
+            self.assertEqual(state(), "plugin installed for app only")
+            extra = [c["status"] for c in self.run_isolated(home, "--phrase", "crossing roads")["candidates"] if c["name"] == "extra"]
+            self.assertEqual(len(extra), 1)
+            self.assertNotIn(" only", extra[0])
+
+    def test_list_columns_line_up_past_a_long_state(self):
+        with tempfile.TemporaryDirectory() as home, tempfile.TemporaryDirectory() as cwd:
+            install = Path(home) / ".claude" / "plugins" / "cache" / "market" / "tools" / "1.0"
+            self.plugin(install, "tools", "configure", "Set up the bot when crossing roads.")
+            project = "/work/" + "p" * 40                                      # a state longer than the 32-character column
+            self.installs(home, {"tools@market": [{"scope": "local", "projectPath": project, "installPath": str(install)}]}, {})
+            self.write(Path(home) / ".claude" / "skills" / "deploy", "deploy", "Ship containers when crossing roads.")
+            env = {k: v for k, v in os.environ.items() if k != "CLAUDE_CONFIG_DIR"} | {"HOME": home, "SKILL_FINDER_ROOTS": str(Path(home) / "x")}
+            rows = subprocess.run([sys.executable, str(FINDER), "--list"], capture_output=True, text=True, env=env, cwd=cwd).stdout.splitlines()
+            self.assertEqual(len(rows), 2, rows)
+            plugin, user = (next(r for r in rows if r.startswith(state)) for state in ("plugin installed for ", "user skill "))
+            self.assertTrue(plugin.startswith(f"plugin installed for {'p' * 40} only tools@market "), plugin)
+            self.assertEqual(plugin.index(" configure "), user.index(" deploy "), rows)       # the name column lines up
 
     def test_two_plugins_without_plugin_json_in_one_marketplace_keep_their_same_named_skills(self):
         with tempfile.TemporaryDirectory() as home:
