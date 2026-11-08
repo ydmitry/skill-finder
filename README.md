@@ -121,13 +121,43 @@ grep -rl --include='*.jsonl' '"name":"Bash".*find_skills\.py' "${CLAUDE_CONFIG_D
 
 and look at whether a skill it listed is invoked afterwards.
 
+**Optional: a second lookup mid-task.** The block already says to look again "when the work turns to a new tool, file type,
+service or document kind", but in tests Claude mostly looked up the request's words, and rarely a second need that showed only
+inside the files: a GPL-licensed file in a pull request under review, answers from under-16s in a survey, money stored as
+floats in a bug fix. The `Second lookups` section below, pasted into the same `CLAUDE.md` right under the block (the tested
+text and placement, word for word), asks for a lookup for each technology or kind of data the files show. Add it if your org
+keeps skills for such needs. It is about two and a half times as long as the block (roughly 500 tokens in every session), it
+adds lookups, and in tests it did not reach a business change such as a cut to a pricing plan; the tests are under "Does it
+work?".
+
+```
+## Second lookups
+The lookup is not a one-time step before the first edit. Every time a file you read shows a technology, a kind of data, a format or a service that the skills you opened do not cover, you MUST look the skills up again with its name, before you write about it. No exceptions.
+Before you write findings or code, write one line: "Technologies and kinds of data in this work: ..." and, for each, the skill you looked up for it or "no skill found".
+
+| Thought | Reality |
+|---|---|
+| "I already ran the lookup before the first edit" | That lookup used the request's words. What the files showed since are new facts; look them up. |
+| "The skill I found fits the task" | It fits the request. A technology or a kind of data in the files is a second need with its own rules. |
+| "The match is the same as last time, so I'll follow it" | Same phrases, same match. Search with the names the files show. |
+| "The check failed, so I'll follow the first skill more closely" | Following one skill harder does not add the rules of another. Look up what the files show. |
+| "This is a review, not an edit, so no skill is needed" | A review is where the team's rules matter most. |
+| "Leave proper nouns out" | That is for phrasing the first search. A technology's name, or the kind of data, is the right phrase for a second one. |
+
+Red flags, stop and look up: you are about to write about a file type, technology or kind of data that no skill you opened mentions; you are rerunning the first lookup's phrases; a check failed and you are only rewording.
+Teams keep their rules for a technology or a kind of data in a skill. Work that skips them comes back incomplete, every time.
+```
+
 ## Does it work?
 
-In short: it helps Claude find and open skills it could not otherwise see, and adds little for skills Claude already lists.
-The tests measure whether Claude ran the finder and opened the skill, not whether the work came out better. They were run
-with Claude Haiku and Sonnet, their harness is not published (several tests run on one machine's own config and skills, some
-of them private; the others on a local copy of 927 public skills that is not redistributed), and they are small: read
-them as directions, not rates. They ran before `--phrase` also read reference files. Two tests need no model: the
+In short: it helps Claude find and open skills it could not otherwise see, and adds little for skills Claude already lists,
+except a second skill whose need shows only in the files (the optional `Second lookups` section).
+Most tests measure whether Claude ran the finder and opened the skill, not whether the work came out better; the tests of the
+`Second lookups` section check whether a skill's rules reached Claude before a check on the output asked for them. They were
+run with Claude Haiku and Sonnet, their harness is not published (several tests run on one machine's own config and skills,
+some of them private; the others on a local copy of 927 public skills that is not redistributed), and they are small: read
+them as directions, not rates. All the model tests except those of the `Second lookups` section ran before `--phrase` also
+read reference files. Two tests need no model: the
 reference-file replay above, which replays the unpublished runs' lookups, and the benchmark in the last paragraph of this
 section, whose scripts are published in `bench/skillret/`.
 
@@ -154,6 +184,45 @@ about three lookups each before their first edit; a coordinator that only handed
 so those lookups stay out of the main conversation. In placement tests with Haiku on unattended runs, a longer version of
 this text in `CLAUDE.md` got the finder run every time, but the skill opened in 9 of 15 runs; added to the task itself, the
 same text got it opened in 15 of 15. The line "open the best match's SKILL.md before writing anything" has not been measured.
+
+**A second skill the files reveal mid-task** (the optional `Second lookups` section). Each test task asked for one thing
+(review a pull request, summarise a survey, fix a bug) and hid a second need in its files. A scripted check passed the work
+only once it applied that second skill's rules, and when it failed it said only that the work was incomplete, never which
+need. The measure: did Claude read the second skill's rules before the check first said so ("reached it" below)? The second
+skills were written for these tests (not published) and sat among 200 public skills, listed in the session by name only:
+unlike the uninstalled skills above, Claude could see their names, and part of the gain came through those names. On four such tasks, 6
+Haiku runs each, the block alone reached it in 0 of 24 runs and the section in 15 of 24; in a rerun, 2 of 24 against 13 of
+24. The first count is exploratory, because that round's control task failed; the rerun passed a bar set before it, with one
+run to spare.
+
+Over both rounds (12 runs a task) it worked where the need is a technology or a kind of data, the section's own words: the
+GPL file 11 of 12, the under-16 answers 9 of 12. For money stored as floats it reached it in 8 of 12 too, but mostly through
+the skill's name in the session's list (5 of the 8; 2 by searching the need), two of them before any money code had been
+read. For a cut to a pricing plan in release notes, which is neither, it reached it in 0 of 12. On Sonnet (the licence and
+survey tasks, 4 runs each) the section reached it in 8 of 8 runs and the block alone in none before the check said the work
+was incomplete (3 of 8 after); half of the 8, counted by hand, went by the skill's name from the session's list, typed as a
+search or opened directly, rather than by searching the need. On four tasks whose second need is a rule, a policy or a new
+fee (gifts to public officials in an expense report, orders to sanctioned places, health claims in product notes, a new card
+surcharge in a newsletter item), the section reached it in 17 of 24 Haiku runs against 3 of 24: 16 of 18 on the first three,
+1 of 6 on the surcharge. These counts are exploratory: the test planned for these tasks was of a different wording, one that
+also names rules and policies, and it decided nothing, because the block alone reached it in 9 of 30 runs over five such tasks,
+above the limit set before the runs, 6 of them on a litigation hold. The block alone also found a few needs that were easy to
+guess (a database migration, a cron parser, the litigation hold). The misses were missing lookups, not failed searches: in the
+rerun, none of the 73 runs that missed with the block alone or with the section had searched for the second need before the
+check said the work was incomplete.
+
+**What the `Second lookups` section costs.** Four ordinary tasks (a styled page, a project plan, search ads, and an incident
+write-up whose notes do hold a second need, a PostgreSQL index built without CONCURRENTLY), Haiku, eight runs each with and
+without it. Runs that opened the task's skill and passed its check: 31 of 32 with it, 28 of 32 without. Median tokens a run
+rose 3% overall, held down by runs without it that needed a second try; among runs that passed at the first try it cost more
+on every task, from 2% (the plan) to 29% (the styled page). Lookups rose by about half. On the first three tasks it opened a
+skill besides the task's own in 7 of 24 runs against 4, each one fitting the request (an ad-writing skill for the ads), 4 of
+the 7 right after a lookup the section asked for. On the incident write-up it looked at the PostgreSQL skill in 2 of 8 runs,
+without it in none. The "Technologies and kinds of data" line it asks for showed in the reply in 10 of 32 Haiku runs and
+never in a deliverable, but Sonnet wrote it into the review file itself in 2 of its 4 licence reviews. The margins set before
+the runs were wide, so this shows no large harm, not no cost. Not tested: harm on Sonnet, and one-line questions or small
+edits with the section. The tasks, the second skills and the section were written for these tests by the same author, with
+model help; the section's table grew from one task's failed runs; and each comparison had 4 to 8 runs a task.
 
 **Skills the session already lists** gain little. Three skills the session lists by name alone, five Sonnet runs each, with
 and without the instruction: the model opened the right skill in all fifteen runs either way, because the names say what

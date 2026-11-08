@@ -38,6 +38,14 @@ test tasks, about three lookups each, and they open the same skills as the top-l
 over looks nothing up (0 of 8). That keeps the lookup output (about 20 to 60 lines each) out of the main conversation, at about $0.08 more
 per delegated run; the coordinator does not learn which skill the worker opened unless the worker says so.
 
+## The optional Second lookups section
+
+What is open (results in the README, "Does it work?"): harm on Sonnet (only Haiku ran the no-harm test); one-line questions and small
+edits with the section, whose "No exceptions" may override the block's "skip for one-line answers"; business changes, which it did not
+reach (a pricing-plan cut 0 of 12, a new card surcharge 1 of 6); needs that are not a technology or a kind of data in general (the
+rule and policy tasks were not decided); tasks and second skills not written by the section's author; and real use, counted from the
+day the section went into one's own `CLAUDE.md`.
+
 ## Trivial edits start a lookup
 
 The block exempts one-line answers and tasks that name their skills, not small edits. "Rename `x` to `count` in this file" ran the finder
