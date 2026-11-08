@@ -63,7 +63,9 @@ or search an exact phrase with `--phrase` before deciding "none apply". A line "
 
 What it cannot see: Claude Code's bundled skills (for example dataviz, code-review, loop) and `~/.claude/commands`
 are not on disk. Your own session's skill list is the ground truth for what you can invoke right now, so check it
-too. The state labels come from the settings files and the install records and can disagree with a live session.
+too. The state labels come from the install records and the settings a session started in the current folder reads (a folder
+whose own settings enable a plugin gets it; the config dir not in use is labelled by its own `settings.json`), and can disagree
+with a live session.
 
 ## 2. Read, then decide
 

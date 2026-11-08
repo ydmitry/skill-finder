@@ -499,6 +499,8 @@ class SameSkillAgain(unittest.TestCase):
         """Claude Code applies a local or project install when the session starts in its projectPath or in the same git repo. Outside
         git that is the folder itself: a subfolder, or a sibling whose name starts the same, does not count."""
         with tempfile.TemporaryDirectory() as home, tempfile.TemporaryDirectory() as top:
+            if any((d / ".git").exists() for d in (Path(top).resolve(), *Path(top).resolve().parents)):
+                self.skipTest("the temp folder is in a git repo, so no folder here is outside git")
             proj = Path(top).resolve() / "app"
             for d in (proj / "sub", proj.parent / "app2"): d.mkdir(parents=True)
             self.settings(proj, "settings.json", False)
@@ -520,7 +522,7 @@ class SameSkillAgain(unittest.TestCase):
             (wt / ".git").write_text(f"gitdir: {repo / '.git' / 'worktrees' / 'wt'}\n")
             state = self.scoped_tools(home, [{"scope": "local", "projectPath": str(repo / "web")}])
             self.settings(repo, "settings.local.json", True)
-            self.assertEqual([state(c) for c in (None, repo, repo / "web", wt)], ["plugin installed for web only"] + ["plugin enabled"] * 3)
+            self.assertEqual([state(c) for c in (None, repo, repo / "web", wt)], ["plugin installed for repo only"] + ["plugin enabled"] * 3)
 
     def test_the_user_and_project_settings_merge_for_every_plugin(self):
         """user settings < the launch folder's .claude/settings.json < settings.local.json, for every plugin: a project can switch a
@@ -538,12 +540,12 @@ class SameSkillAgain(unittest.TestCase):
 
     def test_a_project_path_in_another_case_is_another_folder(self):
         """Claude Code 2.1.319 compares the paths as text: only on Windows does it retry another spelling, so on macOS, whose disks
-        ignore case, a record for .../app does not load in .../App."""
+        ignore case, a record for .../app does not load in .../App. Each spelling holds .git, so a repo the temp folder sits in does
+        not join them."""
         with tempfile.TemporaryDirectory() as home, tempfile.TemporaryDirectory() as top:
             proj = Path(top).resolve() / "App"
-            proj.mkdir()
-            state = self.scoped_tools(home, [{"scope": "local", "projectPath": str(proj.parent / "app")}])
-            self.settings(proj, "settings.local.json", True)
+            for d in (proj, proj.parent / "app"): (d / ".git").mkdir(parents=True, exist_ok=True)     # one folder on macOS, two on Linux
+            state = self.scoped_tools(home, [{"scope": "local", "projectPath": str(proj.parent / "app")}], {"tools@market": True})
             self.assertEqual(state(proj), "plugin installed for app only")
 
     def test_a_subfolder_reads_its_own_settings_json_and_the_repo_roots_local_file(self):
@@ -576,6 +578,116 @@ class SameSkillAgain(unittest.TestCase):
             extra = [c["status"] for c in self.run_isolated(home, "--phrase", "crossing roads")["candidates"] if c["name"] == "extra"]
             self.assertEqual(len(extra), 1)
             self.assertNotIn(" only", extra[0])
+
+    def test_a_folder_that_sets_a_plugin_decides_over_an_install_for_another_project(self):
+        """A session started in a folder whose own settings enable a plugin loads it even when its only install records are for
+        another project: Claude Code writes one for the folder at startup. The user's settings.json alone does not."""
+        with tempfile.TemporaryDirectory() as home, tempfile.TemporaryDirectory() as top:
+            a, b = Path(top).resolve() / "a", Path(top).resolve() / "b"
+            for d in (a, b): (d / ".git").mkdir(parents=True)
+            state = self.scoped_tools(home, [{"scope": "local", "projectPath": str(a)}], {"tools@market": True})
+            self.assertEqual(state(b), "plugin installed for a only")
+            self.settings(b, "settings.json", True)
+            self.assertEqual(state(b), "plugin enabled")
+            self.settings(b, "settings.local.json", False)
+            self.assertEqual(state(b), "plugin DISABLED")
+
+    def cached(self, cfg, plugin, records):
+        """plugin@market cached in config dir cfg with one skill of the same name, and these install records added to cfg's
+        installed_plugins.json."""
+        install = Path(cfg) / "plugins" / "cache" / "market" / plugin / "1.0"
+        self.plugin(install, plugin, plugin, f"The {plugin} skill when crossing roads.")
+        f = Path(cfg) / "plugins" / "installed_plugins.json"
+        data = json.loads(f.read_text()) if f.exists() else {"version": 2, "plugins": {}}
+        data["plugins"][f"{plugin}@market"] = [dict(r, installPath=str(install)) for r in records]
+        f.write_text(json.dumps(data))
+
+    def test_the_folder_and_the_install_records_count_only_in_the_config_dir_in_use(self):
+        """A session reads one config dir, $CLAUDE_CONFIG_DIR when set, else ~/.claude: the folder's settings and the projects a plugin
+        is installed for apply there. Another config dir the finder scans is labelled by its own settings.json alone."""
+        with tempfile.TemporaryDirectory() as home, tempfile.TemporaryDirectory() as top:
+            proj, other = Path(top).resolve() / "proj", Path(top).resolve() / "other"
+            for d in (proj, other): (d / ".git").mkdir(parents=True)
+            claude, second = Path(home) / ".claude", Path(home) / "second"
+            self.cached(claude, "tools", [{"scope": "user"}])
+            self.cached(claude, "kit", [{"scope": "local", "projectPath": str(other)}])
+            (claude / "settings.json").write_text(json.dumps({"enabledPlugins": {"kit@market": True}}))
+            self.cached(second, "gear", [{"scope": "user"}])
+            (proj / ".claude").mkdir()
+            (proj / ".claude" / "settings.json").write_text(json.dumps({"enabledPlugins": {"tools@market": True, "gear@market": True}}))
+            def states(**kw): return {c["name"]: c["status"] for c in self.run_isolated(home, "--phrase", "crossing roads", cwd=proj, **kw)["candidates"]}
+            self.assertEqual(states(), {"tools": "plugin enabled", "kit": "plugin installed for other only"})
+            self.assertEqual(states(config_dir=second), {"tools": "plugin installed", "kit": "plugin enabled", "gear": "plugin enabled"})
+
+    def test_an_install_for_other_projects_names_each_repo_once(self):
+        """Claude Code records the folder a session started in, so one repo gathers records for its subfolders and its linked
+        worktrees. The label names each project by its repo root, once, and at most two of them."""
+        with tempfile.TemporaryDirectory() as home, tempfile.TemporaryDirectory() as top:
+            top = Path(top).resolve()
+            repo, wt, here = top / "app", top / "app-fix", top / "here"
+            (repo / ".git" / "worktrees" / "fix").mkdir(parents=True)
+            (repo / ".git" / "worktrees" / "fix" / "commondir").write_text("../..\n")
+            (repo / "src").mkdir()
+            wt.mkdir()
+            (wt / ".git").write_text(f"gitdir: {repo / '.git' / 'worktrees' / 'fix'}\n")
+            for d in (here, top / "zeta", top / "beta", top / "gamma"): (d / ".git").mkdir(parents=True)
+            records = [{"scope": "local", "projectPath": str(p)} for p in (repo, wt, repo / "src")]
+            self.assertEqual(self.scoped_tools(home, records)(here), "plugin installed for app only")
+            records += [{"scope": "project", "projectPath": str(top / n)} for n in ("zeta", "beta", "gamma")]
+            self.assertEqual(self.scoped_tools(home, records)(here), "plugin installed for app, beta and 2 more only")
+
+    def test_copies_of_an_installed_plugin_that_claude_code_does_not_load_are_off(self):
+        """Claude Code loads an installed plugin from its installPath: another version left in the cache, or a skill folder set aside
+        as <skill>.cachebak there, does not load. A cached plugin with no install record keeps its settings' state."""
+        with tempfile.TemporaryDirectory() as home:
+            cache = Path(home) / ".claude" / "plugins" / "cache" / "market"
+            state = self.scoped_tools(home, [{"scope": "user"}], {"tools@market": True, "docs@market": True})
+            self.plugin(cache / "tools" / "0.9", "tools", "legacy", "The old bot when crossing roads.")
+            self.write(cache / "tools" / "1.0" / "skills" / "retired.cachebak", "retired", "Set aside when crossing roads.")
+            self.plugin(cache / "docs" / "1.0", "docs", "pdf", "Fill pdf forms when crossing roads.")
+            res = {c["name"]: c["status"] for c in self.run_isolated(home, "--phrase", "crossing roads")["candidates"]}
+            self.assertEqual(res, {"configure": "plugin enabled", "legacy": "plugin cached, other version", "pdf": "plugin enabled"})
+
+    def test_a_skill_at_the_root_of_its_install_folder_is_the_installed_copy(self):
+        """Some plugins keep SKILL.md in the plugin folder itself, so the install folder is the skill's own folder: that copy loads,
+        and a newer version left in the cache does not."""
+        with tempfile.TemporaryDirectory() as home:
+            cache = Path(home) / ".claude" / "plugins" / "cache" / "market" / "viz"
+            for ver, words in (("1.0", "Draw pages when crossing roads."), ("2.0", "Draw pages, with charts, when crossing roads.")):
+                (cache / ver / ".claude-plugin").mkdir(parents=True)
+                (cache / ver / ".claude-plugin" / "plugin.json").write_text(json.dumps({"name": "viz"}))
+                (cache / ver / "SKILL.md").write_text(f"---\nname: viz\ndescription: {words}\n---\n\n# viz\n")
+            self.installs(home, {"viz@market": [{"scope": "user", "installPath": str(cache / "1.0")}]}, {"viz@market": True})
+            (c,) = self.run_isolated(home, "--phrase", "crossing roads")["candidates"]
+            self.assertEqual((c["status"], Path(c["path"]).parent.name), ("plugin enabled", "1.0"))
+
+    def test_the_copy_in_the_config_dir_in_use_is_the_one_shown(self):
+        """Both config dirs can hold the same plugin. A session reads one, so its copy and its label are the hit, however much newer
+        the other dir's copy is; that one is named under 'also at'."""
+        with tempfile.TemporaryDirectory() as home:
+            claude, second = Path(home) / ".claude", Path(home) / "second"
+            self.cached(second, "tools", [{"scope": "user"}])
+            (second / "settings.json").write_text(json.dumps({"enabledPlugins": {"tools@market": True}}))
+            old = second / "plugins" / "cache" / "market" / "tools" / "1.0" / "skills" / "tools"
+            os.utime(old, (1_000_000_000, 1_000_000_000))
+            self.cached(claude, "tools", [{"scope": "user"}])                 # the same SKILL.md, newer, not enabled there
+            (c,) = self.run_isolated(home, "--phrase", "crossing roads", config_dir=second)["candidates"]
+            self.assertEqual(c["status"], "plugin enabled")
+            self.assertTrue(c["path"].startswith(str(second)), c["path"])
+
+    def test_settings_whose_enabled_plugins_is_not_an_object_are_ignored(self):
+        with tempfile.TemporaryDirectory() as home:
+            state = self.scoped_tools(home, [{"scope": "user"}])
+            for bad in (["tools@market"], None, "yes"):
+                (Path(home) / ".claude" / "settings.json").write_text(json.dumps({"enabledPlugins": bad}))
+                self.assertEqual(state(), "plugin installed", bad)
+
+    def test_the_projects_are_named_in_alphabetical_order_whatever_the_case(self):
+        with tempfile.TemporaryDirectory() as home, tempfile.TemporaryDirectory() as top:
+            top = Path(top).resolve()
+            for n in ("Zulu", "alpha", "here"): (top / n / ".git").mkdir(parents=True)
+            records = [{"scope": "local", "projectPath": str(top / n)} for n in ("Zulu", "alpha")]
+            self.assertEqual(self.scoped_tools(home, records)(top / "here"), "plugin installed for alpha, Zulu only")
 
     def test_list_columns_line_up_past_a_long_state(self):
         with tempfile.TemporaryDirectory() as home, tempfile.TemporaryDirectory() as cwd:

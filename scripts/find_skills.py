@@ -78,7 +78,7 @@ def frontmatter(text):
 def walk_skills(base):
     """Plugin trees: skills sit at varying depth; a skill folder is never searched for more skills."""
     for dp, dn, fn in os.walk(base):
-        dn[:] = [d for d in dn if d not in SKIP_DIRS and not d.startswith("temp_git_") and not d.endswith(".bak")]
+        dn[:] = [d for d in dn if d not in SKIP_DIRS and not d.startswith("temp_git_") and not d.endswith((".bak", ".cachebak"))]
         if "SKILL.md" in fn:
             dn[:] = []
             yield Path(dp)
@@ -124,39 +124,52 @@ def loads_here(rec, cwd, root):
     p = Path(rec["projectPath"]).resolve()
     return p == cwd or (root is not None and git_root(p) == root)
 
-def plugin_states(user, cwd, root):
-    """enabledPlugins as a session started in cwd reads them, later ones winning: the user's settings.json, the launch folder's
+def projects(recs):
+    """The projects install records are for, each named once by its git repo root (Claude Code records the folder a session started
+    in, so a repo gathers one per subfolder and linked worktree): at most two names, then how many more."""
+    names = sorted({(git_root(p) or p).name for p in (Path(r["projectPath"]).resolve() for r in recs if r.get("projectPath"))},
+                   key=lambda n: (n.lower(), n))
+    return ", ".join(names[:2]) + (f" and {len(names) - 2} more" if len(names) > 2 else "")
+
+def folder_plugins(cwd, root):
+    """enabledPlugins a session started in cwd reads over the user's settings.json, later ones winning: the launch folder's
     .claude/settings.json (never a parent's), then settings.local.json there and at the repo root, where Claude Code keeps it."""
-    on = dict(user)
+    on = {}
     for f in (cwd / ".claude" / "settings.json", cwd / ".claude" / "settings.local.json", (root or cwd) / ".claude" / "settings.local.json"):
-        try: on |= json.loads(f.read_text()).get("enabledPlugins", {})
-        except Exception: pass
+        on |= enabled_plugins(f)
     return on
+
+def enabled_plugins(f):
+    """A settings file's enabledPlugins, or {} when the file, its JSON or that value (not an object) is unusable."""
+    try: v = json.loads(f.read_text()).get("enabledPlugins", {})
+    except Exception: return {}
+    return v if isinstance(v, dict) else {}
 
 def collect(extra_roots, only=()):
     """`only`: scan these folders alone (skills/<name>/SKILL.md, one level), nothing from the config dirs or the cwd."""
     entries, cwd = [], Path.cwd().resolve()
     root = git_root(cwd)
-    def add(sdir, source, status, rank, plugin=None):
+    in_use = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude").resolve()      # a session reads this one alone
+    def add(sdir, source, status, rank, plugin=None, away=False):
         try: text = (sdir / "SKILL.md").read_text(errors="replace")
         except Exception: return
         fm = frontmatter(text)
         entries.append(dict(name=fm.get("name") or sdir.name, description=fm.get("description", ""), dir=sdir,
-                            source=source, status=status, rank=rank, plugin=plugin))
+                            source=source, status=status, rank=rank, plugin=plugin, away=away))
     for cfg in ([] if only else config_dirs()):
-        enabled = {}
-        try: enabled = json.loads((cfg / "settings.json").read_text()).get("enabledPlugins", {})
-        except Exception: pass
-        on = plugin_states(enabled, cwd, root)
+        enabled = enabled_plugins(cfg / "settings.json")
+        here = cfg.resolve() == in_use             # another config dir keeps the labels its own settings.json gives
+        folder = folder_plugins(cwd, root) if here else {}
+        on = enabled | folder
         installed, install_paths, elsewhere = {}, set(), {}     # elsewhere: key -> its projects, when no install of it loads here
         try:
             installed = json.loads((cfg / "plugins" / "installed_plugins.json").read_text()).get("plugins", {})
             for k, v in installed.items():
                 for rec in v: install_paths.add(str(Path(rec["installPath"]).resolve()))
-                if v and not any(loads_here(rec, cwd, root) for rec in v):
-                    elsewhere[k] = sorted({Path(rec["projectPath"]).name for rec in v if rec.get("projectPath")})
+                if here and v and not any(loads_here(rec, cwd, root) for rec in v):
+                    elsewhere[k] = projects(v)
         except Exception: pass
-        for sdir in top_level_skills(cfg / "skills"): add(sdir, "user", "user skill", 0)
+        for sdir in top_level_skills(cfg / "skills"): add(sdir, "user", "user skill", 0, away=not here)
         pl = cfg / "plugins"
         for area in ("cache", "marketplaces"):
             for sdir in walk_skills(pl / area):
@@ -164,14 +177,16 @@ def collect(extra_roots, only=()):
                 market = rel[0]
                 pname = plugin_of(sdir, pl / area) or "?"            # "?": no plugin.json, so group_of() names it by its folder
                 key = f"{rel[1] if pname == '?' and area == 'cache' and len(rel) > 2 else pname}@{market}"  # cache/<market>/<plugin>/
-                at_install = any(str(sdir.resolve()).startswith(ip + os.sep) for ip in install_paths)
-                if at_install and elsewhere.get(key): status = f"plugin installed for {', '.join(elsewhere[key])} only"
+                s = str(sdir.resolve())
+                at_install = any(s == ip or s.startswith(ip + os.sep) for ip in install_paths)     # == : SKILL.md at the plugin root
+                if at_install and elsewhere.get(key) and key not in folder: status = f"plugin installed for {elsewhere[key]} only"
+                elif area == "cache" and not at_install and installed.get(key): status = "plugin cached, other version"
                 elif key in on and (at_install or area == "cache"):
                     status = "plugin enabled" if on[key] else "plugin DISABLED"
                 elif at_install or key in installed: status = "plugin installed"
                 elif area == "cache": status = "plugin cached, not installed"
                 else: status = "marketplace only, not installed"
-                add(sdir, key, status, 1 if at_install else (2 if area == "cache" else 3), pname)
+                add(sdir, key, status, 1 if at_install else (2 if area == "cache" else 3), pname, away=not here)
     for p in ([] if only else [cwd, *cwd.parents]):
         for sdir in top_level_skills(p / ".claude" / "skills"): add(sdir, f"project {p.name}", "project skill", 0)
     for o in only:
@@ -179,7 +194,8 @@ def collect(extra_roots, only=()):
     for r in extra_roots:
         for sdir in walk_skills(Path(r).expanduser()): add(sdir, f"root {r}", "extra root", 0)
     by_hash, out = {}, []                      # identical SKILL.md = one skill; the best-ranked copy is shown, the rest as "also at"
-    for e in sorted(entries, key=lambda e: (e["rank"], -e["dir"].stat().st_mtime, str(e["dir"]))):
+    # at one rank, a copy in the config dir a session reads comes before one in a dir it does not, then the newest
+    for e in sorted(entries, key=lambda e: (e["rank"], e["away"], -e["dir"].stat().st_mtime, str(e["dir"]))):
         h = hashlib.sha1((e["dir"] / "SKILL.md").read_bytes()).hexdigest()
         if h in by_hash: by_hash[h]["also"].append(f"{e['source']} [{e['status']}]"); continue
         e["also"] = []; by_hash[h] = e; out.append(e)
@@ -450,7 +466,7 @@ def toc(entries, what, kind, as_json):
         print(json.dumps(dict(toc=dict(scope=label, level=level, kind=kind, scanned=len(entries),
               groups=[dict(group=g, entries=[toc_entry(e, kind) for e in v]) for g, v in groups])), indent=1)); return
     said = {"names": "name", "sentence": "name — first sentence", "description": "name — description", "headers": "name: H2 headers"}[kind]
-    print(f"table of contents: {len(es)} skill{'s' * (len(es) != 1)} in {len(groups)} folder{'s' * (len(groups) != 1)} ({said}; [off] = plugin not enabled or not installed)")
+    print(f"table of contents: {len(es)} skill{'s' * (len(es) != 1)} in {len(groups)} folder{'s' * (len(groups) != 1)} ({said}; [off] = does not load here: plugin not enabled, not installed, installed for another project, or another version)")
     for g, v in groups:
         print(f"## {g} ({len(v)})")
         for e in v: print(toc_row(e, kind, headers_of(e["dir"] / "SKILL.md") if kind == "headers" else None))

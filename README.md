@@ -46,13 +46,17 @@ Read tests/fixtures/skills/release-notes/SKILL.md, then follow it; search again 
 ```
 
 That is the repo's test fixtures. On your machine each hit shows its state, such as `user skill`, `project skill`, `plugin
-enabled`, `plugin DISABLED`, `plugin installed for <project> only` (installed for another folder or repo, so it does not load
-here), `marketplace only, not installed`, or `extra root` (a folder you added, which Claude Code itself does not load). The
-states come from the install records and the settings a session started in the current folder reads: your `settings.json`, then
-that folder's `.claude/settings.json`, then `settings.local.json` there and at its git repo root. They can still disagree with a live
-session. A skill Claude Code does not load can be read from its path, or copied with `--enable NAME --into DIR` into
-`DIR/.claude/skills`, so a session started in `DIR` can invoke it (a plugin skill whose scripts use `CLAUDE_PLUGIN_ROOT` may
-not work from the copy; the finder warns).
+enabled`, `plugin DISABLED`, `plugin installed for <project> only` (installed for other repos or folders, so it does not load
+here), `plugin cached, other version` (another version left in the cache; Claude Code loads the installed one), `marketplace
+only, not installed`, or `extra root` (a folder you added, which Claude Code itself does not load). The states come from the
+install records and the settings a session started in the current folder reads: your `settings.json`, then that folder's
+`.claude/settings.json`, then `settings.local.json` there and at its git repo root. A folder whose own settings enable a plugin
+gets it, even one installed only for another project. That holds for the config dir a session uses (`$CLAUDE_CONFIG_DIR`, else
+`~/.claude`); when the finder scans both, the other one is labelled by its own `settings.json` (an old version's copy still
+reads `plugin cached, other version`), and where both hold the same skill the copy shown is the one in use. The labels can still
+disagree with a live session. A skill Claude Code does not load can be read from its path, or copied with `--enable NAME
+--into DIR` into `DIR/.claude/skills`, so a session started in `DIR` can invoke it (a plugin skill whose scripts use
+`CLAUDE_PLUGIN_ROOT` may not work from the copy; the finder warns).
 
 ## Why not just grep?
 
