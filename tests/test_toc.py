@@ -523,6 +523,20 @@ class Tables(unittest.TestCase):
             self.assertNotIn("[off]", rows["on-skill"])
             self.assertIn("## p (1)", buf.getvalue())
 
+    def test_off_marker_for_skill_overrides(self):
+        """A skill that skillOverrides hides from Claude (off, user-invocable only) is [off], and the legend says so; one listed to Claude
+        by its name alone is not."""
+        mod = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            entries = [dict(name=n, description="Does it.", dir=make(tmp, n), source="user", status=f"user skill, {state} in settings", rank=0,
+                            plugin=None, also=[]) for n, state in (("gone", "off"), ("menu", "user-invocable only"), ("short", "name only"))]
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                mod.toc(entries, "all", None, False)
+            rows = {ln.split(" — ")[0]: ln for ln in buf.getvalue().splitlines() if " — " in ln}
+            self.assertEqual({n: rows[n].endswith(" [off]") for n in ("gone", "menu", "short")}, {"gone": True, "menu": True, "short": False})
+            self.assertIn("or off or user-invocable only in settings)", buf.getvalue().splitlines()[0])
+
     def test_unknown_scope_exits_1(self):
         code, out, err = toc("no-such-thing")
         self.assertEqual((code, out), (1, ""))

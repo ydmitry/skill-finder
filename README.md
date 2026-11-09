@@ -13,8 +13,29 @@ exist. skill-finder searches every skill on your machine (installed, disabled, o
 marketplace Claude Code cloned) plus any skill repo you have cloned and listed in `scripts/roots`. It lists the skills that
 contain the words Claude looks up, in their `SKILL.md` or in their reference files, each with its path and the line that
 matched. Claude can then read the one that fits, or
-you can copy it into a folder you start a fresh session in. It never edits `settings.json`; the only global change is the
-`CLAUDE.md` lines you add.
+you can copy it into a folder you start a fresh session in. It never edits `settings.json`; beyond the folder you clone, the
+only change to your setup is the `CLAUDE.md` lines you add.
+
+What the tests show: with the `CLAUDE.md` block, Claude runs the finder and opens skills it could not otherwise see. What they
+do not show: that the finished work is better.
+
+**Why not just enable them?** Enable the ones you know you need. The rest you would first have to find: a marketplace you add
+brings every plugin in it, a team repo can hold dozens of skills, and nobody reads them all. Enabling everything has a cost in
+every session. A plugin loads all its skills, commands, agents, hooks and MCP servers, and every skill in the skill list adds to
+the context of every turn, so [Claude Code's docs](https://code.claude.com/docs/en/skills#find-unused-skills) advise turning off
+the ones you never use (`/skill-doctor` lists them). The list also has a budget, 1% of the context window (about 30,000
+characters on a current 1M-token model, 6,000 to 8,000 on a 200k one); past it, each skill keeps its name and the least-used
+lose their description. In one of my sessions the list held 215 skills and commands, 154 of them by name alone. In a 200-skill
+Haiku test that loss did no measurable harm, and a skill whose name says what it does can stay listed by name only
+(`"name-only"` in `skillOverrides`; the docs say it goes by skill name, and Claude Code matches the skill's folder name): in a
+test of three such skills, Sonnet opened them in 15 of 15 runs with or without the `CLAUDE.md` block.
+
+skill-finder is for the rest. The `CLAUDE.md` block below (about 220 tokens in every session) has Claude look the skills up
+before a task's first edit. A lookup lists at most 10 skills whose `SKILL.md` holds the phrase (and up to 5 that hold it only
+in reference files), each with its description and the line that matched, so Claude can rule candidates out without opening
+them: in my tests a lookup that found something printed about 3,800 characters in the median and up to about 8,800, where the
+median `SKILL.md` on my machine is about 8,000. Claude can read most skills from their files without enabling them; whether it
+then follows one as well as an enabled skill is not measured.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/where-it-looks-dark.png">
@@ -22,7 +43,8 @@ you can copy it into a folder you start a fresh session in. It never edits `sett
 </picture>
 
 Claude will not reach for the finder by itself, so it comes with a short instruction for your `CLAUDE.md` (below). It pays
-off for skills Claude cannot see; for skills Claude already lists, the tests found little gain.
+off most for skills Claude cannot see; for skills Claude already lists, the tests found little gain, except for a second
+need that shows only in the files (the optional `Second lookups` section below).
 
 ## What a lookup looks like
 
@@ -50,17 +72,27 @@ enabled`, `plugin DISABLED`, `plugin installed for <project> only` (installed fo
 here), `plugin cached, other version` (another version left in the cache; Claude Code loads the installed one), `marketplace
 only, not installed`, or `extra root` (a folder you added, which Claude Code itself does not load). The states come from the
 install records and the settings a session started in the current folder reads: your `settings.json`, then that folder's
-`.claude/settings.json`, then `settings.local.json` there and at its git repo root. A folder whose own settings enable a plugin
-gets it, even one installed only for another project. That holds for the config dir a session uses (`$CLAUDE_CONFIG_DIR`, else
+`.claude/settings.json`, then `settings.local.json` there and at its git repo root (for a linked worktree, the main checkout's
+root, so an entry the `/skills` menu saved there reaches the worktree). A folder whose own settings enable a plugin
+gets it, even one installed only for another project. A user or project skill that `skillOverrides` in those files hides or
+shortens (an entry under its folder name, not its frontmatter `name`) says so: `user skill, off in settings` (hidden from
+Claude and from the `/` menu), `user skill, user-invocable only in settings` (in your
+`/` menu, hidden from Claude) or `user skill, name only in settings` (Claude gets its name without the description), and
+`project skill, ...` alike; plugin skills are not affected. That holds for the config dir a session uses (`$CLAUDE_CONFIG_DIR`, else
 `~/.claude`); when the finder scans both, the other one is labelled by its own `settings.json` (an old version's copy still
 reads `plugin cached, other version`), and where both hold the same skill the copy shown is the one in use. The labels can still
 disagree with a live session. A skill Claude Code does not load can be read from its path, or copied with `--enable NAME
 --into DIR` into `DIR/.claude/skills`, so a session started in `DIR` can invoke it (a plugin skill whose scripts use
-`CLAUDE_PLUGIN_ROOT` may not work from the copy; the finder warns).
+`CLAUDE_PLUGIN_ROOT` may not work from the copy; the finder warns). The copy is a project skill in a folder of the skill's bare
+name, so `skillOverrides` set to `off` or `user-invocable-only` for that folder name in the files a session started in `DIR`
+reads (the ones above) keeps Claude from invoking it, and a user skill in a folder of that name runs instead of it (personal
+beats project); the finder warns in both cases. The same entry also hides the original wherever that file is read (always for a user skill, or for
+an entry in your `settings.json`); for a plugin skill only the copy is hidden, since `skillOverrides` does not apply to plugin skills. An entry in
+another project's `.claude/settings.local.json`, where the `/skills` menu saves it, does not reach `DIR`.
 
 ## Why not just grep?
 
-`--phrase` is close to a `grep -ril` over every `SKILL.md`, plus up to five skills that hold the phrase only in their
+`--phrase` is close to a `grep -ril` over every `SKILL.md`, cut to the best 10 (`--limit 40` for more), plus up to five skills that hold the phrase only in their
 reference files. In a small Haiku test (four tasks over one folder of 927 public skills, run before the finder read
 reference files), Claude found the right skill about as often with plain `grep` over `SKILL.md` files. What the finder adds is around the match:
 
@@ -109,10 +141,13 @@ It lists the skills whose SKILL.md contains the phrase, best first. Look up seve
 Open the best match's SKILL.md before writing anything, and follow it. Search again only if it does not fit. No match means proceed without a skill. Skip for one-line answers and when the task names its skills.
 ```
 
-**A skill it finds is followed like one you installed.** The block has Claude follow the best match, also when it comes from
+**A skill it finds is trusted like one you installed.** The block has Claude follow the best match, also when it comes from
 a marketplace or repo you never installed and may never have read, and a `SKILL.md` can tell Claude to run its scripts.
-Search only sources you would install from: the
-marketplaces you added are searched as they are, and `scripts/roots` holds the rest.
+Search only sources you would install from: the marketplaces you added are searched as they are, and `scripts/roots` holds
+the rest. A plain read does not run a skill's `` !`command` `` lines, fill in `${CLAUDE_SKILL_DIR}` or `${CLAUDE_PLUGIN_ROOT}`,
+or apply its frontmatter (`allowed-tools`, `context: fork`, `hooks`, `model`); such a skill works only when Claude Code loads
+it: its plugin enabled, or a copy made with `--enable`, which runs `` !`command` `` lines and fills `${CLAUDE_SKILL_DIR}` but
+not `${CLAUDE_PLUGIN_ROOT}`.
 
 The tested text said "No match, or a LOW CONFIDENCE one"; only the keyword search (`--task`) prints `LOW CONFIDENCE`, never
 `--phrase`, so that clause is left out here. The block costs about 220 tokens in every session. In a Haiku test,
@@ -162,7 +197,8 @@ Most tests measure whether Claude ran the finder and opened the skill, not wheth
 `Second lookups` section check whether a skill's rules reached Claude before a check on the output asked for them. They were
 run with Claude Haiku and Sonnet, their harness is not published (several tests run on one machine's own config and skills,
 some of them private; the others on a local copy of 927 public skills that is not redistributed), and they are small: read
-them as directions, not rates. All the model tests except those of the `Second lookups` section ran before `--phrase` also
+them as directions, not rates. The model tests ran when a `--phrase` lookup listed up to 40 skills; the default is now 10. All
+the model tests except those of the `Second lookups` section ran before `--phrase` also
 read reference files. Two tests need no model: the
 reference-file replay above, which replays the unpublished runs' lookups, and the benchmark in the last paragraph of this
 section, whose scripts are published in `bench/skillret/`.
@@ -237,20 +273,20 @@ harm. Name-only skills whose names say nothing are untested. For skills that kee
 with the instruction opened the right one in 23 and 25 of 25, a difference of one task (3 of 5 to 5 of 5). So it pays off most when your org's
 skills are on disk (a marketplace or a cloned repo) but not installed.
 
-**On a public benchmark, with no model.** SkillRet ([arXiv 2605.05726](https://arxiv.org/abs/2605.05726)) asks a ranker to
+**On a public benchmark, with no model.** This benchmark scores the `--task` ranker, not the `--phrase` lookups the
+`CLAUDE.md` block uses. SkillRet ([arXiv 2605.05726](https://arxiv.org/abs/2605.05726)) asks a ranker to
 find the skills each of 4,392 requests needs among 6,006 public SKILL.md files. The finder's `--task` ranker scores NDCG@10
 58.78 (how high the needed skills sit in the first ten, out of 100), against 51.69 for the benchmark's own BM25 keyword
 baseline, whose rerun here gives the paper's numbers exactly; off-the-shelf embedding models in the paper reach 70.26, but
 need a model, and the finder uses none. The lead
 over BM25 comes from requests that need two or three skills; on the 2,143 that need one, there is no measurable difference.
 The requests were written from each skill's name and description, which suits the weight the finder puts on the description.
-This scores the ranker alone, given the whole request: not the two- or three-word `--phrase` lookups the `CLAUDE.md` block
-uses, and not whether Claude runs the finder and opens what it finds. [`bench/skillret/`](bench/skillret/) reruns it on a
+It does not test whether Claude runs the finder or opens what it finds. [`bench/skillret/`](bench/skillret/) reruns it on a
 laptop in about a quarter of an hour, with no API key.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/skillret-benchmark-dark.png">
-  <img src="docs/images/skillret-benchmark.png" alt="On the public SkillRet benchmark, the finder's keyword ranking scores above the BM25 keyword baseline (51.69) and below the best off-the-shelf embedding model in the paper (70.26), which needs a model.">
+  <img src="docs/images/skillret-benchmark.png" alt="On the public SkillRet benchmark, which scores the finder's --task keyword ranker and not the --phrase lookups the CLAUDE.md block uses, the ranker scores 58.78: above the BM25 keyword baseline (51.69) and below the best off-the-shelf embedding model in the paper (70.26), which needs a model.">
 </picture>
 
 ## Commands
@@ -265,9 +301,13 @@ python3 scripts/find_skills.py --enable NAME --into DIR                 # copy a
 python3 scripts/find_skills.py --phrase "..." --only DIR                # search only the skills in DIR, as in the example
 ```
 
-`--phrase` is the recommended lookup and the one the `CLAUDE.md` block uses; `--toc` (every skill on one line, grouped by
-folder) is an optional way to browse. In an
-unpublished pick-only test (48 requests over one machine's 264 skills; Sonnet read a whole table and named up to three skills),
+`--phrase` is the recommended lookup and the one the `CLAUDE.md` block uses. It lists the best 10 skills; when more hold the
+phrase, it says how many and that `--limit 40` lists more. Quotes are optional for the words that follow it after a space
+(`--phrase release notes` is one phrase; another `--phrase` adds a second). `--phrase` and `--task` leave out the finder
+itself, whose README and notes hold the example phrases and would match most lookups: its own folder and any copy of it (the same `SKILL.md`, or a skill of
+its name with `scripts/find_skills.py` beside it); `--list` and `--toc` without `--phrase` still show it. `--toc` (every skill on one line,
+grouped by folder) is an optional way to browse. In an unpublished pick-only test (48 requests over one machine's 264 skills;
+Sonnet read a whole table and named up to three skills),
 no table put the right skill among its picks more often than `--phrase` output did (43 of 48). The table with whole
 descriptions matched it, 43, at about seven times the cost; the tables with names, first sentences (the default) or headers
 had 33, 34 and 40.

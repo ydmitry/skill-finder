@@ -2,7 +2,7 @@
 """Find the skills that fit a task across the skill folders on this machine.
 
   find_skills.py --task "explain this PR as a page" [--top 8] [--root DIR ...] [--json]
-  find_skills.py --phrase "implementation plan" [--phrase "task breakdown" ...] [--limit 40] [--json]
+  find_skills.py --phrase "implementation plan" [--phrase "task breakdown" ...] [--limit 10] [--json]   # quotes optional after a space
   find_skills.py --list
   find_skills.py --toc [WHAT] [--kind names|sentence|description|headers|files] [--json]   # tables of contents: every skill, one folder, one skill
   find_skills.py --phrase "<words>" --toc       # the hits as sections, one sentence each, no best match
@@ -17,11 +17,15 @@ and marketplace folders of plugins never installed. Claude Code's bundled skills
 disk here; the session's own skill list covers them. Ranks by task terms found in each skill's name, description,
 SKILL.md and references/. It finds candidates; a model reading them decides.
 --phrase is the other way to search: not scored words but an exact phrase, looked up in the whole SKILL.md of every skill (like
-`grep -il`), then listed compactly: the best 40 by a phrase in the name, then in the description, then how often it occurs.
+`grep -il`), then listed compactly: the best 10 by a phrase in the name, then in the description, then how often it occurs; when
+more skills hold it, the header says how many and that --limit 40 lists more.
 Up to 5 skills that hold it only in their reference files follow, with file:line. When no SKILL.md holds the phrase those
 come first; then it says how many skills hold each word and lists the 10 nearest by the --task ranking.
 A phrase search that finds skills ends with the best match: why it matched (where the phrase sits), when to use it, its first lines,
 its reference files, and where to read.
+The finder itself is left out of every search (its README and notes hold every example phrase): its own folder, a copy of its
+SKILL.md, and a skill of its name with scripts/find_skills.py beside it (another version installed apart). --list and a bare --toc
+show it.
 It calls no model, starts no process and opens no connection; only --enable and --remove write, inside the folder you name.
 """
 import argparse, hashlib, json, math, os, re, shutil, sys
@@ -32,7 +36,8 @@ STOP = set("a an and are as at be by do for from how in into is it its of on or 
            "make want need can should would could about after before then than them they our out all any new one "
            "please let lets get put set add using used what when where which who will not but also just my me we".split())
 
-PHRASE_LIMIT = 40        # a phrase search lists at most this many skills, three short lines each
+PHRASE_LIMIT = 10        # a phrase search lists at most this many skills, three short lines each
+LIMIT_MORE = 40          # ... and when more hold the phrase, its header says that --limit this lists more
 OPEN_LINES = 20          # ... and ends with the first lines of the best match's SKILL.md, so reading it starts in the same result
 CLOSEST = 10            # a phrase that matches nothing lists this many skills nearest by words,
 CLOSEST_FULL = 3        # the first of them with the start of the description, the rest as a name and a path
@@ -40,10 +45,13 @@ GENERIC_SHARE = 0.20     # a task word found in over a fifth of the skills' text
 MARGIN = 1.3             # the top hit counts as clear when it scores this much more than the next one
 SENTENCE_MAX = 120       # --toc: a skill's row holds the description's first sentence, cut at a word beyond this
 ROW_MAX = 160            # ... and a names, sentence or headers row is at most this long
-ON = {"user skill", "plugin enabled", "project skill", "folder skill", "extra root"}     # statuses Claude Code loads; any other row is [off]
+ON = {"user skill", "plugin enabled", "project skill", "folder skill", "extra root",    # statuses whose skill Claude gets; any other row is [off]
+      "user skill, name only in settings", "project skill, name only in settings"}
+HIDDEN = {"name-only": "name only", "user-invocable-only": "user-invocable only", "off": "off"}     # skillOverrides states as a label says them; "on" adds nothing
 TOC_FILES = 60           # --toc <skill> --kind files lists at most this many files, then says how many more
 FILES_SKIP = {".git", "node_modules", "__pycache__", ".venv"}       # a skill's own files never come from these or any dot folder
 NOT_END = {"e.g", "i.e", "vs", "etc", "cf"}
+OWN = Path(__file__).resolve().parents[1]       # the finder's own skill folder, where a symlinked install leads
 
 def default_roots():
     f = Path(os.environ.get("SKILL_FINDER_ROOTS") or Path(__file__).with_name("roots"))
@@ -70,8 +78,9 @@ def frontmatter(text):
     except Exception: pass
     out, key = {}, None
     for line in block.splitlines():
+        if line.strip().startswith("#"): continue          # a YAML comment line belongs to no key
         km = re.match(r"^([A-Za-z_-]+):\s*(.*)$", line)
-        if km: key = km.group(1); out[key] = km.group(2).strip().strip(">|").strip().strip("\"'")
+        if km: key = km.group(1); out[key] = re.sub(r"^[>|][-+\d]*(\s+#.*)?$", "", km.group(2).strip()).strip(">|").strip().strip("\"'")     # a block's header: >-, |2+ # note
         elif key and line.strip(): out[key] = (out[key] + " " + line.strip()).strip()
     return out
 
@@ -131,36 +140,68 @@ def projects(recs):
                    key=lambda n: (n.lower(), n))
     return ", ".join(names[:2]) + (f" and {len(names) - 2} more" if len(names) > 2 else "")
 
-def folder_plugins(cwd, root):
-    """enabledPlugins a session started in cwd reads over the user's settings.json, later ones winning: the launch folder's
-    .claude/settings.json (never a parent's), then settings.local.json there and at the repo root, where Claude Code keeps it."""
-    on = {}
-    for f in (cwd / ".claude" / "settings.json", cwd / ".claude" / "settings.local.json", (root or cwd) / ".claude" / "settings.local.json"):
-        on |= enabled_plugins(f)
-    return on
+def session_config():
+    """The config dir a session reads, and the only one: $CLAUDE_CONFIG_DIR, else ~/.claude."""
+    return Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude").resolve()
 
-def enabled_plugins(f):
-    """A settings file's enabledPlugins, or {} when the file, its JSON or that value (not an object) is unusable."""
-    try: v = json.loads(f.read_text()).get("enabledPlugins", {})
+def folder_files(cwd, root):
+    """The settings files a session started in cwd reads over the user's settings.json, in order: the launch folder's
+    .claude/settings.json (never a parent's), then settings.local.json there and at the repo root, where Claude Code keeps it."""
+    return (cwd / ".claude" / "settings.json", cwd / ".claude" / "settings.local.json", (root or cwd) / ".claude" / "settings.local.json")
+
+def folder_settings(cwd, root, key):
+    """`key` (enabledPlugins, skillOverrides) as a session started in cwd reads it over the user's settings.json, later files
+    winning name by name."""
+    out = {}
+    for f in folder_files(cwd, root): out |= setting(f, key)
+    return out
+
+def setting(f, key):
+    """A settings file's object under `key` (enabledPlugins, skillOverrides), or {} when the file, its JSON or its schema is unusable.
+    Claude Code skips a file that fails its schema whole, so either key failing takes both keys of that file out: a later file's
+    "hidden" leaves an earlier file's "off", and its other entries do not count. What is checked: the file is a JSON object;
+    enabledPlugins, when present, is an object whose values are true, false or a list of strings (version constraints); skillOverrides,
+    when present, is an object whose values are "on", "name-only", "user-invocable-only" or "off". No other key is checked, so a file
+    that another key makes invalid still counts here."""
+    try: data = json.loads(f.read_text())
     except Exception: return {}
-    return v if isinstance(v, dict) else {}
+    if not isinstance(data, dict): return {}
+    v = {k: data.get(k, {}) for k in ("enabledPlugins", "skillOverrides")}
+    if not all(isinstance(x, dict) for x in v.values()) or any(s not in ("on", *HIDDEN) for s in v["skillOverrides"].values()): return {}
+    if not all(isinstance(p, bool) or isinstance(p, list) and all(isinstance(c, str) for c in p) for p in v["enabledPlugins"].values()): return {}
+    return v[key]
+
+def own_skill():
+    """The bytes of the finder's own SKILL.md and its skill name, which mark a copy of the finder elsewhere; (None, None) without one."""
+    try: md = (OWN / "SKILL.md").read_bytes()
+    except OSError: return None, None
+    return md, frontmatter(md.decode(errors="replace")).get("name") or OWN.name
 
 def collect(extra_roots, only=()):
     """`only`: scan these folders alone (skills/<name>/SKILL.md, one level), nothing from the config dirs or the cwd."""
     entries, cwd = [], Path.cwd().resolve()
     root = git_root(cwd)
-    in_use = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude").resolve()      # a session reads this one alone
-    def add(sdir, source, status, rank, plugin=None, away=False):
+    in_use = session_config()
+    folder_hides = {} if only else folder_settings(cwd, root, "skillOverrides")     # skill folder name -> state; plugin skills ignore it
+    own_md, own_name = own_skill()
+    def add(sdir, source, status, rank, plugin=None, away=False, hides=None):
         try: text = (sdir / "SKILL.md").read_text(errors="replace")
         except Exception: return
         fm = frontmatter(text)
-        entries.append(dict(name=fm.get("name") or sdir.name, description=fm.get("description", ""), dir=sdir,
-                            source=source, status=status, rank=rank, plugin=plugin, away=away))
+        name = fm.get("name") or sdir.name
+        said = HIDDEN.get((hides or {}).get(sdir.name))     # skillOverrides goes by the command name: a user or project skill's folder
+        # the finder itself: its own folder, a copy of its SKILL.md, or a skill of its name with its script (another version, installed
+        # apart from the clone that runs); the merges pass it on to the row they keep
+        own = (sdir.resolve() == OWN or (sdir / "SKILL.md").read_bytes() == own_md
+               or (name == own_name and (sdir / "scripts" / "find_skills.py").is_file()))
+        entries.append(dict(name=name, description=fm.get("description", ""), dir=sdir, source=source,
+                            status=f"{status}, {said} in settings" if said else status, rank=rank, plugin=plugin, away=away, own=own))
     for cfg in ([] if only else config_dirs()):
-        enabled = enabled_plugins(cfg / "settings.json")
+        enabled = setting(cfg / "settings.json", "enabledPlugins")
         here = cfg.resolve() == in_use             # another config dir keeps the labels its own settings.json gives
-        folder = folder_plugins(cwd, root) if here else {}
+        folder = folder_settings(cwd, root, "enabledPlugins") if here else {}
         on = enabled | folder
+        hides = setting(cfg / "settings.json", "skillOverrides") | (folder_hides if here else {})
         installed, install_paths, elsewhere = {}, set(), {}     # elsewhere: key -> its projects, when no install of it loads here
         try:
             installed = json.loads((cfg / "plugins" / "installed_plugins.json").read_text()).get("plugins", {})
@@ -169,7 +210,7 @@ def collect(extra_roots, only=()):
                 if here and v and not any(loads_here(rec, cwd, root) for rec in v):
                     elsewhere[k] = projects(v)
         except Exception: pass
-        for sdir in top_level_skills(cfg / "skills"): add(sdir, "user", "user skill", 0, away=not here)
+        for sdir in top_level_skills(cfg / "skills"): add(sdir, "user", "user skill", 0, away=not here, hides=hides)
         pl = cfg / "plugins"
         for area in ("cache", "marketplaces"):
             for sdir in walk_skills(pl / area):
@@ -182,13 +223,14 @@ def collect(extra_roots, only=()):
                 if at_install and elsewhere.get(key) and key not in folder: status = f"plugin installed for {elsewhere[key]} only"
                 elif area == "cache" and not at_install and installed.get(key): status = "plugin cached, other version"
                 elif key in on and (at_install or area == "cache"):
-                    status = "plugin enabled" if on[key] else "plugin DISABLED"
+                    status = "plugin enabled" if on[key] is True or isinstance(on[key], list) else "plugin DISABLED"   # a list of versions, even an empty one, enables it
                 elif at_install or key in installed: status = "plugin installed"
                 elif area == "cache": status = "plugin cached, not installed"
                 else: status = "marketplace only, not installed"
                 add(sdir, key, status, 1 if at_install else (2 if area == "cache" else 3), pname, away=not here)
+    project_hides = {} if only else setting(in_use / "settings.json", "skillOverrides") | folder_hides
     for p in ([] if only else [cwd, *cwd.parents]):
-        for sdir in top_level_skills(p / ".claude" / "skills"): add(sdir, f"project {p.name}", "project skill", 0)
+        for sdir in top_level_skills(p / ".claude" / "skills"): add(sdir, f"project {p.name}", "project skill", 0, hides=project_hides)
     for o in only:
         for sdir in top_level_skills(Path(o).expanduser()): add(sdir, f"only {o}", "folder skill", 0)
     for r in extra_roots:
@@ -197,7 +239,7 @@ def collect(extra_roots, only=()):
     # at one rank, a copy in the config dir a session reads comes before one in a dir it does not, then the newest
     for e in sorted(entries, key=lambda e: (e["rank"], e["away"], -e["dir"].stat().st_mtime, str(e["dir"]))):
         h = hashlib.sha1((e["dir"] / "SKILL.md").read_bytes()).hexdigest()
-        if h in by_hash: by_hash[h]["also"].append(f"{e['source']} [{e['status']}]"); continue
+        if h in by_hash: by_hash[h]["also"].append(f"{e['source']} [{e['status']}]"); by_hash[h]["own"] |= e["own"]; continue
         e["also"] = []; by_hash[h] = e; out.append(e)
     # The same skill again with other text (an older cached version, a copy in the second config folder, a user copy of a plugin
     # skill): same name and either the same plugin, the same user skills folder name, or the same description. The best-ranked copy
@@ -216,11 +258,18 @@ def collect(extra_roots, only=()):
             here = f"{twin['source']} [{twin['status']}]"
             for place in [f"{e['source']} [{e['status']}]", *e["also"]]:
                 if place != here and place not in twin["also"]: twin["also"].append(place)
+            twin["own"] |= e["own"]
             continue
         kept.setdefault(e["name"], []).append(e); merged.append(e)
     for e in merged:                           # name only the other places: not the hit's own label again (a copy in the second config folder)
         e["also"] = [p for p in dict.fromkeys(e["also"]) if p != f"{e['source']} [{e['status']}]"]
     return merged
+
+def searchable(entries):
+    """The skills a search looks in: all but the finder itself, whose SKILL.md, README, TODO and bench notes hold the example phrases
+    and would match most lookups. That is its own folder, any copy of it (see collect) and the row either merged into, whichever copy
+    it shows; a skill that only shares its name stays."""
+    return [e for e in entries if not e["own"]]
 
 def terms_of(task):
     words = [w for w in re.findall(r"[a-z0-9][a-z0-9+#._-]+", task.lower()) if w not in STOP]
@@ -466,7 +515,7 @@ def toc(entries, what, kind, as_json):
         print(json.dumps(dict(toc=dict(scope=label, level=level, kind=kind, scanned=len(entries),
               groups=[dict(group=g, entries=[toc_entry(e, kind) for e in v]) for g, v in groups])), indent=1)); return
     said = {"names": "name", "sentence": "name — first sentence", "description": "name — description", "headers": "name: H2 headers"}[kind]
-    print(f"table of contents: {len(es)} skill{'s' * (len(es) != 1)} in {len(groups)} folder{'s' * (len(groups) != 1)} ({said}; [off] = does not load here: plugin not enabled, not installed, installed for another project, or another version)")
+    print(f"table of contents: {len(es)} skill{'s' * (len(es) != 1)} in {len(groups)} folder{'s' * (len(groups) != 1)} ({said}; [off] = Claude does not get it here: plugin not enabled, not installed, installed for another project, another version, or off or user-invocable only in settings)")
     for g, v in groups:
         print(f"## {g} ({len(v)})")
         for e in v: print(toc_row(e, kind, headers_of(e["dir"] / "SKILL.md") if kind == "headers" else None))
@@ -551,11 +600,17 @@ def invoked_script(path=None, home=None):
     home = (home if home is not None else os.path.expanduser("~")).rstrip(os.sep)
     return "~" + p[len(home):] if home and p.startswith(home + os.sep) else p
 
+def how_many(n, limit):
+    """The header's count of the skills that hold the phrase and, when it lists fewer, how to see more."""
+    if n <= limit: return f"{n} skill(s) contain it"
+    return (f"{n} skill(s) contain it; the best {limit} are shown" + (f", --limit {LIMIT_MORE} lists more" if limit < LIMIT_MORE else "")
+            + ". A longer phrase narrows it")
+
 def print_phrase_toc(entries, hits, sections, counts, nearest, limit):
     def row(e, tail=""):
         return f"{e['name']} — {first_sentence(e['description'], max(20, min(SENTENCE_MAX, ROW_MAX - len(e['name']) - 3 - len(tail)))) or '(no description)'}{tail}"
     if hits:
-        if len(hits) > limit: print(f"{len(hits)} skill(s) contain it; the best {limit} are shown. A longer phrase narrows it.")
+        if len(hits) > limit: print(how_many(len(hits), limit) + ".")
         for k, v in sections.items():
             if not v: continue
             print(f"## phrase in the {k} ({len(v)})")
@@ -674,8 +729,7 @@ def phrase_search(entries, phrases, limit, as_json, toc=False):
             print("No skill holds any of these words either.")
         if unread: print(f"Not read: {unread} reference file(s) over {REF_BYTES_MAX // 1_000_000} MB or past the first {REF_FILES_MAX} of a skill.")
         return
-    print(f"{len(hits)} skill(s) contain it" + ("" if len(hits) <= limit else f"; the best {limit} are shown. A longer phrase narrows it")
-          + ". Best first: the phrase in the name, then in the description, then how often it occurs.\n")
+    print(how_many(len(hits), limit) + ". Best first: the phrase in the name, then in the description, then how often it occurs.\n")
     for i, r in enumerate(rows, 1):
         print(f"{i}. {r['name']}  [{r['status']}]  {r['path']}")
         print(f"   {r['description']}")
@@ -698,8 +752,11 @@ def plain_name(n):
 
 def enable(entries, names, into, source):
     """Copy skills into DIR/.claude/skills so a session started in DIR can invoke them, whatever their plugin's
-    state. Nothing global changes: settings.json is never touched. The copy loses its plugin namespace."""
-    root = Path(into).expanduser().resolve() / ".claude" / "skills"
+    state. Nothing global changes: settings.json is never touched. The copy loses its plugin namespace. It warns when a session
+    started in DIR would not give Claude the copy: skillOverrides hides that folder name there, or a user skill of that name wins."""
+    here = Path(into).expanduser().resolve()
+    root, user = here / ".claude" / "skills", session_config()
+    files = (user / "settings.json", *folder_files(here, git_root(here)))       # the files a session in DIR reads, later ones winning
     root.mkdir(parents=True, exist_ok=True)
     manifest = root / ".skill-finder.json"
     done = json.loads(manifest.read_text()) if manifest.exists() else {}
@@ -718,6 +775,15 @@ def enable(entries, names, into, source):
         if any("CLAUDE_PLUGIN_ROOT" in read_small(f) for f in dest.rglob("*") if f.is_file() and f.suffix in (".md", ".sh", ".py", ".json")):
             note = "  WARNING: refers to CLAUDE_PLUGIN_ROOT; its scripts may not find their files from here"
         print(f"enabled {n}  ({e['status']}; {e['source']}) -> {dest}{note}")
+        state, at = None, None
+        for f in files:
+            s = setting(f, "skillOverrides").get(n)
+            if s: state, at = s, f
+        if state in ("off", "user-invocable-only"):
+            print(f'  WARNING: skillOverrides sets {n} to "{state}" in {at}; Claude cannot invoke the copy in a session started in {here}')
+        mine = user / "skills" / n                 # personal beats project, by folder name
+        if (mine / "SKILL.md").is_file() and mine.resolve() != e["dir"].resolve():
+            print(f"  WARNING: a user skill of that name is at {mine}; a session started in {here} runs it, not the copy")
     manifest.write_text(json.dumps(done, indent=1) + "\n")
 
 def remove(into):
@@ -732,8 +798,10 @@ def remove(into):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--task", default=""); ap.add_argument("--top", type=int, default=8)
-    ap.add_argument("--phrase", action="append", default=[], help="an exact phrase to look for in every SKILL.md, then in reference files (repeatable: alternatives)")
-    ap.add_argument("--limit", type=int, default=PHRASE_LIMIT, help="--phrase: how many skills to list")
+    ap.add_argument("--phrase", action="append", nargs="+", default=[], metavar="WORD",
+                    help="an exact phrase to look for in every SKILL.md, then in reference files; quotes optional after a space (repeatable: alternatives)")
+    ap.add_argument("--limit", type=int, default=PHRASE_LIMIT,
+                    help=f"--phrase: how many skills to list (default {PHRASE_LIMIT}; the header says when more hold the phrase, and --limit {LIMIT_MORE} lists more)")
     ap.add_argument("--root", action="append", default=[]); ap.add_argument("--list", action="store_true")
     ap.add_argument("--only", action="append", default=[], metavar="DIR",
                     help="scan only DIR/<name>/SKILL.md (repeatable): no config dirs, no project skills; for tests and fixtures")
@@ -744,6 +812,10 @@ def main():
     ap.add_argument("--enable", nargs="+", default=[]); ap.add_argument("--remove", action="store_true")
     ap.add_argument("--into"); ap.add_argument("--source", default="")
     a = ap.parse_args()
+    for words in a.phrase:                                      # `--phrase "release notes" "changelog"` is two phrases, not one
+        if len(words) > 1 and any(len(w.split()) > 1 for w in words):
+            sys.exit("--phrase " + " ".join(f'"{w}"' for w in words) + ": each phrase needs its own --phrase")
+    a.phrase = [" ".join(words) for words in a.phrase]          # `--phrase release notes` is the phrase "release notes"
     if a.kind and a.phrase: sys.exit("--kind goes with --toc alone")
     if a.kind and a.toc is None: sys.exit("--kind needs --toc")
     if a.toc is not None:
@@ -763,12 +835,13 @@ def main():
     if a.toc is not None and not a.phrase: return toc(entries, a.toc, a.kind, a.json)
     if a.phrase:
         if a.task: sys.exit("use --phrase or --task, not both")
-        return phrase_search(entries, a.phrase, a.limit, a.json, a.toc is not None)
+        return phrase_search(searchable(entries), a.phrase, a.limit, a.json, a.toc is not None)
     if a.list or not a.task:
         w = max([32, *(len(e["status"]) for e in entries)])        # "plugin installed for <project> only" can be longer
         for e in entries:
             print(f"{e['status']:<{w}} {e['source']:<40} {e['name']:<36} {e['dir']}")
         print(f"\n{len(entries)} skills", file=sys.stderr); return
+    entries = searchable(entries)
     terms = terms_of(a.task)
     ranked, pats, generic = rank(entries, terms)
     top = ranked[0][1] if ranked else None

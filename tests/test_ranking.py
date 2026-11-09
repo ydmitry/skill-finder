@@ -7,6 +7,7 @@ import ast
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -17,15 +18,21 @@ HERE = Path(__file__).resolve().parent
 FINDER = HERE.parent / "scripts" / "find_skills.py"
 FIXTURES = HERE / "fixtures" / "skills"
 NO_PROCESS_OR_NETWORK = {"subprocess", "socket", "_socket", "ssl", "urllib", "http", "ctypes", "webbrowser", "pty", "socketserver",
-                         "ftplib", "smtplib", "asyncio", "multiprocessing", "concurrent"}
-# Runs the finder in this interpreter, then names which of the modules in argv[1] it had loaded.
+                         "ftplib", "smtplib", "asyncio", "multiprocessing", "concurrent"}      # packages the script itself never imports
+# Modules that start a process or open a connection, by full name, for what a search loads at run time: urllib.parse is not one
+# (pathlib loads it on Python 3.9), urllib.request is.
+STARTS_A_PROCESS_OR_CONNECTS = {"subprocess", "_posixsubprocess", "socket", "_socket", "ssl", "_ssl", "http", "urllib.request", "ftplib",
+                                "smtplib", "poplib", "imaplib", "nntplib", "telnetlib", "xmlrpc", "socketserver", "webbrowser", "pty",
+                                "ctypes", "asyncio.subprocess", "asyncio.base_subprocess", "multiprocessing", "_multiprocessing",
+                                "concurrent.futures.process"}
+# Runs the finder in this interpreter, then names the modules it had loaded that are in argv[1] or inside one of them.
 LOADED = """import runpy, sys
-watched = set(sys.argv[1].split(","))
+watched = sys.argv[1].split(",")
 sys.argv = sys.argv[2:]
 try: runpy.run_path(sys.argv[0], run_name="__main__")
 except SystemExit as e:
     if e.code not in (None, 0): raise
-sys.stderr.write("\\nloaded:" + "".join(" " + m for m in sorted({m.split(".")[0] for m in sys.modules} & watched)) + "\\n")
+sys.stderr.write("\\nloaded:" + "".join(" " + m for m in sorted(m for m in sys.modules if any(m == w or m.startswith(w + ".") for w in watched))) + "\\n")
 """
 
 FIRST = {
@@ -164,6 +171,30 @@ class PhraseSearch(unittest.TestCase):
         cmd = [sys.executable, str(FINDER), "--only", str(FIXTURES), "--phrase", "the", "--limit", "2"]
         text = subprocess.run(cmd, capture_output=True, text=True).stdout
         self.assertIn("the best 2 are shown", text)
+
+    def test_ten_are_listed_unless_asked_and_the_header_says_how_to_list_more(self):
+        """15 of the 18 fixture skills hold "the". A lookup lists 10, and its header says how many hold the phrase and that --limit 40
+        lists more, in the plain output and the --toc one; --limit 40 lists 40 of 45, and its header points at no larger --limit."""
+        def text(folder, *extra):
+            cmd = [sys.executable, str(FINDER), "--only", str(folder), "--phrase", "the", *extra]
+            return subprocess.run(cmd, capture_output=True, text=True).stdout
+        _, out = self.run_phrase("the")
+        self.assertEqual((out["matched"], out["shown"]), (15, 10))
+        self.assertEqual(sum(bool(re.match(r"\d+\. ", ln)) for ln in text(FIXTURES).splitlines()), 10)
+        for extra in ((), ("--toc",)):
+            head = next(ln for ln in text(FIXTURES, *extra).splitlines() if "contain it" in ln)
+            self.assertTrue(head.startswith("15 skill(s) contain it; the best 10 are shown"), head)
+            self.assertIn("--limit 40 lists more", head)
+            self.assertEqual(len([ln for ln in text(FIXTURES, *extra).splitlines() if " — " in ln]), 10 if extra else 0)
+        with tempfile.TemporaryDirectory() as tmp:
+            self.make(tmp, {f"s{i:02}": f"---\nname: s{i:02}\ndescription: x\n---\nRead the quartz gauge.\n" for i in range(45)})
+            _, out = self.run_phrase("the", folder=tmp, extra=("--limit", "40"))
+            self.assertEqual((out["matched"], out["shown"], len(out["candidates"])), (45, 40, 40))
+            for extra in ((), ("--toc",)):
+                head = next(ln for ln in text(tmp, "--limit", "40", *extra).splitlines() if "contain it" in ln)
+                self.assertTrue(head.startswith("45 skill(s) contain it; the best 40 are shown. A longer phrase narrows it"), head)
+                self.assertNotIn("--limit", head)
+            self.assertEqual(self.run_phrase("the", folder=tmp)[1]["shown"], 10)
 
     def test_equal_skills_come_out_by_name_whatever_order_the_folders_were_made_in(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -333,6 +364,31 @@ class PhraseSearch(unittest.TestCase):
             self.assertIn("alpha", [n["name"] for n in out["nearest"]])
             text = self.text_of(tmp, "blue green switch")
             self.assertEqual(text.count("alpha/SKILL.md"), 1)
+
+    def test_a_phrase_needs_no_quotes(self):
+        """`--phrase release notes` is one phrase of two words, as `--phrase "release notes"` is; each --phrase starts another. A
+        lookup typed without quotes failed with 'unrecognized arguments'."""
+        def run(*args):
+            out = subprocess.run([sys.executable, str(FINDER), "--only", str(FIXTURES), *args], capture_output=True, text=True)
+            self.assertEqual(out.returncode, 0, out.stderr)
+            return json.loads(out.stdout) if "--json" in args else out.stdout
+        self.assertEqual(run("--phrase", "release", "notes"), run("--phrase", "release notes"))
+        out = run("--phrase", "release", "notes", "--phrase", "changelog", "--json")
+        self.assertEqual((out["phrases"], [c["name"] for c in out["candidates"]]), (["release notes", "changelog"], ["release-notes"]))
+        self.assertEqual(run("--phrase", "goal", "loop", "--phrase", "pull request", "--json")["phrases"], ["goal loop", "pull request"])
+        self.assertEqual(run("--phrase", "goal", "loop", "--toc", "--json")["sections"]["name"], ["goal-loop"])     # --toc stays a flag
+        self.assertEqual(run("--toc", "--phrase", "goal", "loop", "--json")["sections"]["name"], ["goal-loop"])
+        self.assertEqual(run("--phrase", "the", "--limit", "2", "--json")["shown"], 2)
+
+    def test_quoted_phrases_after_one_flag_are_refused(self):
+        """`--phrase "release notes" "changelog"` is two phrases given to one --phrase: joined, they were the phrase "release notes
+        changelog", which no skill holds. Only plain words join; a value with a space among several says each needs its own --phrase."""
+        for words in (["release notes", "changelog"], ["changelog", "release notes"], ["release", "notes", "pull request"]):
+            out = subprocess.run([sys.executable, str(FINDER), "--only", str(FIXTURES), "--phrase", *words], capture_output=True, text=True)
+            self.assertEqual((out.returncode, out.stdout), (1, ""), words)
+            self.assertIn("each phrase needs its own --phrase", out.stderr)
+        out = subprocess.run([sys.executable, str(FINDER), "--only", str(FIXTURES), "--phrase", "release notes", "--json"], capture_output=True, text=True)
+        self.assertEqual(json.loads(out.stdout)["phrases"], ["release notes"])
 
     def test_no_match_says_so_and_a_task_is_refused_beside_it(self):
         cmd = [sys.executable, str(FINDER), "--only", str(FIXTURES), "--phrase", "zzz qqq"]
@@ -837,7 +893,7 @@ class BestMatch(unittest.TestCase):
 
     def test_a_search_loads_no_process_or_network_module(self):
         for args in (["--phrase", "zebra crossing"], ["--phrase", "no such words"], ["--task", "cross a road"], ["--toc"], ["--list"]):
-            out = subprocess.run([sys.executable, "-c", LOADED, ",".join(NO_PROCESS_OR_NETWORK), str(FINDER), "--only", str(self.skills), *args],
+            out = subprocess.run([sys.executable, "-c", LOADED, ",".join(STARTS_A_PROCESS_OR_CONNECTS), str(FINDER), "--only", str(self.skills), *args],
                                  capture_output=True, text=True)
             self.assertEqual(out.returncode, 0, out.stderr)
             self.assertEqual(out.stderr.splitlines()[-1], "loaded:", args)
@@ -858,6 +914,335 @@ class BestMatch(unittest.TestCase):
             return False
         top = [n.name if isinstance(n, ast.FunctionDef) else type(n).__name__ for n in tree.body if writes(n)]
         self.assertEqual(sorted(top), ["enable", "remove"])
+
+
+class OwnFolder(unittest.TestCase):
+    """The finder's own folder holds every example phrase (its SKILL.md, README.md, TODO.md, bench/), so a search leaves it out: the
+    phrase hits, the reference hits, the best match, the nearest lists and --task. --list and a bare --toc, the inventories, still name it.
+    The fixture is a copy of the finder in a skill folder, scanned as it is and through a symlink, as ~/.claude/skills/skill-finder
+    often is, and run by the path it is installed at."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        t = Path(self.tmp.name).resolve()
+        own = t / "clone" / "skill-finder"
+        (own / "scripts").mkdir(parents=True)
+        shutil.copy(FINDER, own / "scripts" / "find_skills.py")
+        (own / "SKILL.md").write_text("---\nname: skill-finder\ndescription: Find the skill for a task.\n---\n\n# skill-finder\n"
+                                      'Try --phrase "implementation plan", or "implementation plan" with another.\n')
+        (own / "README.md").write_text("Look up the quartz gauge, or the amber lamp.\n")
+        (t / "linked").mkdir()
+        (t / "linked" / "skill-finder").symlink_to(own, target_is_directory=True)
+        for root in (t / "clone", t / "linked"):
+            for name, body in (("planner", "Write an implementation plan."), ("gauge", "Read the quartz gauge."), ("lamp-post", "A lamp."),
+                               ("filler-1", "Nothing."), ("filler-2", "Nothing.")):        # five: a word one of them holds is not too common
+                (root / name).mkdir()
+                (root / name / "SKILL.md").write_text(f"---\nname: {name}\ndescription: x\n---\n\n# {name}\n{body}\n")
+        self.roots = (t / "clone", t / "linked")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def run_own(self, root, *args):
+        out = subprocess.run([sys.executable, str(root / "skill-finder" / "scripts" / "find_skills.py"), "--only", str(root), *args],
+                             capture_output=True, text=True)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        return json.loads(out.stdout) if "--json" in args else out.stdout
+
+    def test_a_phrase_in_its_own_skill_md_finds_the_other_skill(self):
+        for root in self.roots:
+            out = self.run_own(root, "--phrase", "implementation plan", "--json")
+            self.assertEqual(([c["name"] for c in out["candidates"]], out["best"]["name"]), (["planner"], "planner"), root)
+            self.assertIn("Best match: planner", self.run_own(root, "--phrase", "implementation plan"))
+            out = self.run_own(root, "--phrase", "implementation plan", "--toc", "--json")
+            self.assertEqual(out["sections"]["body"], ["planner"], root)
+
+    def test_its_own_reference_files_are_not_reference_hits(self):
+        for root in self.roots:
+            out = self.run_own(root, "--phrase", "quartz gauge", "--json")
+            self.assertEqual(([c["name"] for c in out["candidates"]], out["reference_hits"]), (["gauge"], []), root)
+
+    def test_a_miss_neither_counts_nor_lists_it(self):
+        for root in self.roots:
+            out = self.run_own(root, "--phrase", "amber lamp", "--json")
+            self.assertEqual((out["reference_hits"], out["word_counts"]), ([], {"amber": 0, "lamp": 1}), root)
+            self.assertEqual([n["name"] for n in out["nearest"]], ["lamp-post"], root)
+            self.assertIn("## nearest by words (1)\nlamp-post — x\n", self.run_own(root, "--phrase", "amber lamp", "--toc"))
+
+    def test_task_leaves_it_out(self):
+        for root in self.roots:
+            self.assertEqual([c["name"] for c in self.run_own(root, "--task", "quartz gauge", "--json")["candidates"]], ["gauge"], root)
+
+    def test_list_and_toc_still_name_it(self):
+        for root in self.roots:
+            self.assertIn(" skill-finder ", self.run_own(root, "--list"))
+            names = [e["name"] for g in self.run_own(root, "--toc", "--json")["toc"]["groups"] for e in g["entries"]]
+            self.assertIn("skill-finder", names, root)
+            self.assertEqual(self.run_own(root, "--toc", "skill-finder", "--json")["toc"]["name"], "skill-finder")
+
+    def run_at(self, script, home, *args, config_dir=None, cwd=None):
+        """The finder run by `script` in cwd, with `home` (and config_dir) as its only config dirs and no roots file."""
+        env = {k: v for k, v in os.environ.items() if k != "CLAUDE_CONFIG_DIR"} | {"HOME": str(home), "SKILL_FINDER_ROOTS": str(home / "no-roots")}
+        if config_dir: env["CLAUDE_CONFIG_DIR"] = str(config_dir)
+        out = subprocess.run([sys.executable, str(script), *args], capture_output=True, text=True, env=env, cwd=cwd)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        return json.loads(out.stdout) if "--json" in args else out.stdout
+
+    def home_with_finder(self):
+        """A HOME whose ~/.claude/skills holds the fixture's skills and the finder as a symlink to the clone."""
+        home = Path(self.tmp.name).resolve() / "home"
+        skills = home / ".claude" / "skills"
+        skills.mkdir(parents=True)
+        (skills / "skill-finder").symlink_to(self.roots[0] / "skill-finder", target_is_directory=True)
+        for d in self.roots[0].iterdir():
+            if d.name != "skill-finder": shutil.copytree(d, skills / d.name)
+        return home
+
+    def assert_left_out(self, script, home, **kw):
+        out = self.run_at(script, home, "--phrase", "implementation plan", "--json", **kw)
+        self.assertEqual(([c["name"] for c in out["candidates"]], out["best"]["name"]), (["planner"], "planner"), script)
+        out = self.run_at(script, home, "--phrase", "quartz gauge", "--json", **kw)
+        self.assertEqual(([c["name"] for c in out["candidates"]], out["reference_hits"]), (["gauge"], []), script)
+        self.assertEqual([c["name"] for c in self.run_at(script, home, "--task", "implementation plan", "--json", **kw)["candidates"]],
+                         ["planner"], script)
+        self.assertEqual(self.run_at(script, home, "--list", **kw).count(" skill-finder "), 1, script)     # one skill, still listed
+
+    def test_another_copy_that_wins_the_merge_is_left_out_too(self):
+        """A copy in $CLAUDE_CONFIG_DIR/skills with one more line is the same skill (a user skill in both config dirs) and, in the dir a
+        session reads, the copy the merge shows: the finder's own row folds into it, and the search leaves the row out all the same."""
+        home = self.home_with_finder()
+        work = home / ".claude-work"
+        shutil.copytree(self.roots[0] / "skill-finder", work / "skills" / "skill-finder")
+        with open(work / "skills" / "skill-finder" / "SKILL.md", "a") as f: f.write("One more line.\n")
+        with tempfile.TemporaryDirectory() as empty:
+            for script in (home / ".claude" / "skills" / "skill-finder", work / "skills" / "skill-finder"):
+                self.assert_left_out(script / "scripts" / "find_skills.py", home, config_dir=work, cwd=empty)
+
+    def home_with_installed(self, write):
+        """A HOME whose ~/.claude/skills holds the fixture's skills and, at skill-finder, a separate folder that `write` fills (no
+        symlink to the clone): the finder is then run from the clone, which no scan reaches."""
+        home = Path(self.tmp.name).resolve() / "home"
+        skills = home / ".claude" / "skills"
+        skills.mkdir(parents=True)
+        for d in self.roots[0].iterdir():
+            if d.name != "skill-finder": shutil.copytree(d, skills / d.name)
+        write(skills / "skill-finder")
+        return home
+
+    def test_a_separate_copy_with_the_same_skill_md_is_left_out(self):
+        """The same SKILL.md bytes as the clone's mark a copy of the finder, even with no scripts beside it."""
+        def write(d):
+            d.mkdir()
+            shutil.copy(self.roots[0] / "skill-finder" / "SKILL.md", d / "SKILL.md")
+        home = self.home_with_installed(write)
+        with tempfile.TemporaryDirectory() as empty:
+            self.assert_left_out(self.roots[0] / "skill-finder" / "scripts" / "find_skills.py", home, cwd=empty)
+
+    def test_another_version_installed_apart_from_the_clone_is_left_out(self):
+        """Another version of the finder (one more line in SKILL.md) is a skill of the same name with scripts/find_skills.py beside it."""
+        def write(d):
+            shutil.copytree(self.roots[0] / "skill-finder", d)
+            with open(d / "SKILL.md", "a") as f: f.write("One more line.\n")
+        home = self.home_with_installed(write)
+        with tempfile.TemporaryDirectory() as empty:
+            self.assert_left_out(self.roots[0] / "skill-finder" / "scripts" / "find_skills.py", home, cwd=empty)
+
+    def test_another_skill_that_only_shares_the_name_stays(self):
+        """A skill named skill-finder with other text and no scripts/find_skills.py is not this tool: a search still finds it."""
+        def write(d):
+            d.mkdir()
+            (d / "SKILL.md").write_text("---\nname: skill-finder\ndescription: x\n---\n\n# Another finder\nWrite an implementation plan.\n")
+        home = self.home_with_installed(write)
+        with tempfile.TemporaryDirectory() as empty:
+            out = self.run_at(self.roots[0] / "skill-finder" / "scripts" / "find_skills.py", home, "--phrase", "implementation plan", "--json", cwd=empty)
+        self.assertEqual(sorted(c["name"] for c in out["candidates"]), ["planner", "skill-finder"])
+
+    def test_a_copy_enabled_into_a_run_folder_is_left_out_there(self):
+        """--enable skill-finder --into RUN copies it unchanged: one SKILL.md, so one row, shown at the newer copy. Run in RUN, by the
+        install or by the copy, the search leaves that row out whichever copy is newer."""
+        home = self.home_with_finder()
+        installed = home / ".claude" / "skills" / "skill-finder" / "scripts" / "find_skills.py"
+        run = Path(self.tmp.name).resolve() / "run"
+        run.mkdir()
+        self.run_at(installed, home, "--enable", "skill-finder", "--into", str(run), cwd=run)
+        copy, m = run / ".claude" / "skills" / "skill-finder", (self.roots[0] / "skill-finder").stat().st_mtime
+        for stamp in (m - 1000, m + 1000):              # the copy older, then newer, than the install
+            os.utime(copy, (stamp, stamp))
+            for script in (installed, copy / "scripts" / "find_skills.py"):
+                self.assert_left_out(script, home, cwd=run)
+
+
+class Overrides(unittest.TestCase):
+    """skillOverrides in the settings a session reads maps a skill's command name (for a user or project skill, its folder name) to
+    "on", "name-only", "user-invocable-only" or "off" (absent:
+    "on"). It hides or shortens a personal or project skill, and the label says so; plugin skills are not affected (Claude Code's docs,
+    "Override skill visibility from settings"). The files and their order are the ones enabledPlugins is read from."""
+    run_isolated, write, plugin, installs = SameSkillAgain.run_isolated, SameSkillAgain.write, SameSkillAgain.plugin, SameSkillAgain.installs
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        t = Path(self.tmp.name).resolve()
+        self.home, self.repo = t / "home", t / "repo"
+        (self.repo / ".git").mkdir(parents=True)
+        (self.repo / "web").mkdir()
+        for name in ("deploy", "notes", "keep"):
+            self.write(self.home / ".claude" / "skills" / name, name, f"The {name} skill when crossing roads.")
+        self.write(self.repo / ".claude" / "skills" / "lint", "lint", "The lint skill when crossing roads.")
+        install = self.home / ".claude" / "plugins" / "cache" / "market" / "tools" / "1.0"
+        self.plugin(install, "tools", "configure", "Set up the bot when crossing roads.")
+        self.installs(self.home, {"tools@market": [{"scope": "user", "installPath": str(install)}]})
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    @staticmethod
+    def settings(folder, name, overrides, **more):
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / name).write_text(json.dumps({"skillOverrides": overrides, **more}))
+
+    def labels(self, cwd=None, **kw):
+        """{name: label} of every skill, for a session started in cwd (the repo root by default)."""
+        return {c["name"]: c["status"] for c in self.run_isolated(self.home, "--phrase", "crossing roads", cwd=cwd or self.repo, **kw)["candidates"]}
+
+    def test_each_state_is_in_the_label(self):
+        self.settings(self.home / ".claude", "settings.json", {"deploy": "off", "notes": "name-only", "lint": "user-invocable-only", "keep": "on"},
+                      enabledPlugins={"tools@market": True})
+        self.assertEqual(self.labels(), {"deploy": "user skill, off in settings", "notes": "user skill, name only in settings", "keep": "user skill",
+                                         "lint": "project skill, user-invocable only in settings", "configure": "plugin enabled"})
+
+    def test_later_settings_win_name_by_name(self):
+        """The user's settings.json < the launch folder's .claude/settings.json < settings.local.json there < the one at the repo root.
+        Started in a subfolder, the root's settings.json is not read."""
+        user, root, web = self.home / ".claude", self.repo / ".claude", self.repo / "web" / ".claude"
+        self.settings(user, "settings.json", {"deploy": "off", "notes": "off", "keep": "off", "lint": "off"})
+        self.settings(root, "settings.json", {"deploy": "name-only", "lint": "on"})
+        self.settings(root, "settings.local.json", {"notes": "on"})
+        self.assertEqual(self.labels(), {"deploy": "user skill, name only in settings", "notes": "user skill", "keep": "user skill, off in settings",
+                                         "lint": "project skill", "configure": "plugin installed"})
+        self.settings(web, "settings.json", {"keep": "user-invocable-only"})
+        self.settings(web, "settings.local.json", {"notes": "off", "lint": "name-only"})
+        self.assertEqual(self.labels(self.repo / "web"), {"deploy": "user skill, off in settings", "notes": "user skill",
+                                                          "keep": "user skill, user-invocable only in settings",
+                                                          "lint": "project skill, name only in settings", "configure": "plugin installed"})
+
+    def test_plugin_skills_are_not_affected(self):
+        self.settings(self.home / ".claude", "settings.json", {"configure": "off", "tools:configure": "off"}, enabledPlugins={"tools@market": True})
+        self.assertEqual(self.labels()["configure"], "plugin enabled")
+
+    def test_a_user_or_project_skill_is_keyed_by_its_folder_name(self):
+        """Claude Code keys skillOverrides on the command name, which for a user or project skill is its folder name (the /skills menu
+        saves the entry under it); a frontmatter name that differs is what the menu shows. An entry under the folder name applies, one
+        under the frontmatter name does not."""
+        skills, project = self.home / ".claude" / "skills", self.repo / ".claude" / "skills"
+        self.write(skills / "ship-it", "release-tool", "The release tool when crossing roads.")
+        self.write(skills / "jot-down", "notes-tool", "The notes tool when crossing roads.")
+        self.write(project / "check-style", "style-guard", "The style guard when crossing roads.")
+        self.write(project / "fmt", "formatter", "The formatter when crossing roads.")
+        self.settings(self.home / ".claude", "settings.json", {"ship-it": "off", "notes-tool": "off"})
+        self.settings(self.repo / ".claude", "settings.json", {"check-style": "user-invocable-only", "formatter": "off", "release-tool": "on"})
+        labels = self.labels()
+        self.assertEqual({n: labels[n] for n in ("release-tool", "notes-tool", "style-guard", "formatter")},
+                         {"release-tool": "user skill, off in settings", "notes-tool": "user skill",
+                          "style-guard": "project skill, user-invocable only in settings", "formatter": "project skill"})
+
+    def enable(self, *args):
+        """The lines --enable prints, run with HOME as the only config dir from an empty folder outside the repo."""
+        env = {k: v for k, v in os.environ.items() if k != "CLAUDE_CONFIG_DIR"} | {"HOME": str(self.home), "SKILL_FINDER_ROOTS": str(self.home / "no-roots")}
+        with tempfile.TemporaryDirectory() as empty:
+            out = subprocess.run([sys.executable, str(FINDER), "--enable", *args], capture_output=True, text=True, env=env, cwd=empty)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        return out.stdout.splitlines()
+
+    def test_enable_warns_when_settings_hide_the_copy(self):
+        """The copy is a project skill in DIR/.claude/skills/<name>, so skillOverrides "off" or "user-invocable-only" for that folder name,
+        in a file a session started in DIR reads, keeps Claude from invoking it. The last file to name it decides; "name-only" leaves
+        the copy to Claude, and a file elsewhere does not count."""
+        run = self.repo / "web"
+        cases = ((self.home / ".claude", "settings.json", "off"), (run / ".claude", "settings.json", "user-invocable-only"),
+                 (run / ".claude", "settings.local.json", "off"), (self.repo / ".claude", "settings.local.json", "user-invocable-only"))
+        for folder, name, state in cases:
+            self.settings(folder, name, {"configure": state})
+            lines = self.enable("configure", "--into", str(run))
+            self.assertTrue(lines[0].startswith("enabled configure  "), lines)
+            self.assertEqual(lines[1:], [f'  WARNING: skillOverrides sets configure to "{state}" in {folder / name}; Claude cannot invoke '
+                                         f'the copy in a session started in {run}'], (folder, name))
+            (folder / name).unlink()
+        self.settings(run / ".claude", "settings.json", {"configure": "off"})
+        self.settings(run / ".claude", "settings.local.json", {"configure": "name-only"})         # later, so it decides
+        self.settings(self.home / "elsewhere" / ".claude", "settings.json", {"configure": "off"})
+        self.assertEqual(len(self.enable("configure", "--into", str(run))), 1)
+
+    def test_enable_warns_when_a_user_skill_of_that_name_runs_instead(self):
+        """Personal beats project: with a user skill in a folder of the copy's name, a session started in DIR runs the user skill. The
+        folder decides, whatever that skill's frontmatter name; a copy of that same user skill gets no such warning."""
+        self.write(self.home / ".claude" / "skills" / "configure", "setup-helper", "Another bot setup when crossing roads.")
+        run = self.repo / "web"
+        lines = self.enable("configure", "--into", str(run))
+        self.assertTrue(lines[0].startswith("enabled configure  (plugin installed; tools@market) -> "), lines)
+        self.assertEqual(lines[1:], [f"  WARNING: a user skill of that name is at {self.home / '.claude' / 'skills' / 'configure'}; a session "
+                                     f"started in {run} runs it, not the copy"])
+        self.assertEqual(len(self.enable("deploy", "--into", str(run))), 1)
+
+    def test_a_value_that_is_not_an_object_or_not_a_state_changes_nothing(self):
+        for bad in (["deploy"], "off", None, 3):
+            self.settings(self.home / ".claude", "settings.json", bad)
+            self.assertEqual(self.labels()["deploy"], "user skill", bad)
+        self.settings(self.home / ".claude", "settings.json", {"deploy": "hidden", "notes": ["off"], "keep": None, "lint": {"off": 1}})
+        self.assertEqual(self.labels(), {"deploy": "user skill", "notes": "user skill", "keep": "user skill", "lint": "project skill",
+                                         "configure": "plugin installed"})
+        self.settings(self.home / ".claude", "settings.json", {"deploy": "off"})
+        self.settings(self.repo / ".claude", "settings.json", "on")                  # a folder file that is unusable leaves the user's value
+        self.assertEqual(self.labels()["deploy"], "user skill, off in settings")
+
+    def test_a_later_file_with_a_value_that_is_not_a_state_leaves_the_earlier_one(self):
+        """Claude Code's schema takes on, name-only, user-invocable-only and off, so another value never takes effect: a later file's
+        "hidden", null, "OFF" or ["on"] does not replace an earlier file's state, whether the earlier file is the user's or the folder's.
+        Such a file fails the schema, so its valid entries ("lint": "off") do not count either."""
+        self.settings(self.home / ".claude", "settings.json", {"deploy": "off", "notes": "name-only", "keep": "user-invocable-only"})
+        self.settings(self.repo / ".claude", "settings.json", {"deploy": "hidden", "notes": None, "keep": "OFF", "lint": "off"})
+        self.settings(self.repo / ".claude", "settings.local.json", {"lint": ["on"]})
+        self.assertEqual(self.labels(), {"deploy": "user skill, off in settings", "notes": "user skill, name only in settings",
+                                         "keep": "user skill, user-invocable only in settings", "lint": "project skill",
+                                         "configure": "plugin installed"})
+
+    def test_a_file_that_fails_the_schema_adds_nothing(self):
+        """Claude Code skips a settings file whole when it fails its schema, not just the invalid entry: a skillOverrides value that is
+        not one of the four states takes out the file's other overrides and its enabledPlugins, and an enabledPlugins that is not an
+        object takes out its skillOverrides."""
+        self.settings(self.home / ".claude", "settings.json", {"deploy": "off"})
+        self.settings(self.repo / ".claude", "settings.json", {"deploy": "hidden", "lint": "user-invocable-only"},
+                      enabledPlugins={"tools@market": True})
+        self.assertEqual(self.labels(), {"deploy": "user skill, off in settings", "notes": "user skill", "keep": "user skill",
+                                         "lint": "project skill", "configure": "plugin installed"})
+        self.settings(self.repo / ".claude", "settings.json", {"lint": "off"}, enabledPlugins=["tools@market"])
+        self.assertEqual(self.labels()["lint"], "project skill")
+        self.settings(self.repo / ".claude", "settings.json", {"lint": "off"}, enabledPlugins={"tools@market": True})     # the same file, valid
+        self.assertEqual((self.labels()["lint"], self.labels()["configure"]), ("project skill, off in settings", "plugin enabled"))
+
+    def test_an_enabled_plugins_value_other_than_true_false_or_versions_fails_the_file(self):
+        """Claude Code's schema takes true, false or a list of version constraints for a plugin; any other value fails the file whole,
+        as an invalid skillOverrides state does: neither key of that file counts. A list of versions is valid and enables the plugin."""
+        self.settings(self.home / ".claude", "settings.json", {"deploy": "off"})
+        for bad in ("yes", 1, None, {"version": "1.0"}, [1], "true"):
+            self.settings(self.repo / ".claude", "settings.json", {"deploy": "on", "lint": "off"}, enabledPlugins={"tools@market": bad})
+            labels = self.labels()
+            self.assertEqual((labels["deploy"], labels["lint"], labels["configure"]), ("user skill, off in settings", "project skill",
+                                                                                      "plugin installed"), bad)
+        for versions in (["^1.0"], []):                  # any list enables the plugin, an empty one too
+            self.settings(self.repo / ".claude", "settings.json", {"lint": "off"}, enabledPlugins={"tools@market": versions})
+            self.assertEqual((self.labels()["lint"], self.labels()["configure"]), ("project skill, off in settings", "plugin enabled"), versions)
+
+    def test_another_config_dir_labels_its_user_skills_by_its_own_settings(self):
+        """A session reads one config dir: its settings.json and the folder's files label its user skills and the project's. Another
+        config dir the finder scans labels its own user skills by its own settings.json alone, as it labels its plugins."""
+        second = self.home / "second"
+        self.write(second / "skills" / "draft", "draft", "The draft skill when crossing roads.")
+        self.settings(second, "settings.json", {"lint": "off", "draft": "name-only", "deploy": "on"})
+        self.settings(self.home / ".claude", "settings.json", {"lint": "name-only", "deploy": "off", "draft": "off"})
+        self.settings(self.repo / ".claude", "settings.json", {"keep": "off", "draft": "user-invocable-only"})
+        self.assertEqual(self.labels(config_dir=second), {"draft": "user skill, user-invocable only in settings",
+                                                          "lint": "project skill, off in settings", "deploy": "user skill, off in settings",
+                                                          "notes": "user skill", "keep": "user skill", "configure": "plugin installed"})
 
 
 if __name__ == "__main__":

@@ -23,10 +23,11 @@ A phrase works when its words are common but the phrase is not ("implementation 
 Look up several phrases, each from a different angle: what the work is about; what the finished thing is called; how one
 goes about it; its shape. Leave proper nouns out.
 
-It looks for the exact phrase in the whole `SKILL.md` of every skill, body included, and lists up to 40, three short lines
+It looks for the exact phrase in the whole `SKILL.md` of every skill, body included, and lists up to 10, three short lines
 each (name, state, path; the start of the description; the line that matched), best first: a phrase in the name, then in
-the description, then how often it occurs. Several `--phrase` are alternatives, and a skill holding more of them comes
-first. It says how many skills match: over 40, use a longer phrase. Skills that hold the phrase only in their reference
+the description, then how often it occurs. Quotes are optional for words that follow `--phrase` after a space:
+`--phrase release notes` is one phrase. Several `--phrase` are alternatives, and a skill holding more of them comes first.
+It says how many skills match; when more than 10 do, use a longer phrase, or `--limit 40` to list more. Skills that hold the phrase only in their reference
 files (`.md`/`.txt` in the skill's folder, `references/` first, no log, test or hidden folders, up to 120 files of up to
 2 MB a skill) follow, up to 5, with the file and line: open that skill's `SKILL.md`, then the file. When no `SKILL.md` holds
 it, those come first; then it says how many skills hold each word of the phrase in `SKILL.md` or reference files (a word
@@ -52,7 +53,9 @@ config dir (`~/.claude`, and `$CLAUDE_CONFIG_DIR` when set): enabled plugins, DI
 and marketplace folders of plugins never installed. A `--phrase` hit is three short lines (name, state, path; the start of the description; the line that matched). A `--task` hit shows its state, source, path, the whole
 description (cut at 1,500 characters, and it says so), the lines that matched with `file:line`, and its reference files with their first heading. Copies of one skill are shown
 once, with "also at" where their labels differ: identical files, versions of one plugin, a user skill in both config folders,
-or the same name with the same description. Two different skills that share a name are both shown, unless they sit in one plugin. `--list` prints the whole inventory. `--only DIR` (repeatable) scans only the skills
+or the same name with the same description. Two different skills that share a name are both shown, unless they sit in one plugin. `--phrase` and `--task` leave out
+skill-finder itself, whose README and notes hold the example phrases and would match most lookups: its own folder, a copy of its `SKILL.md`, and a skill of its name with
+`scripts/find_skills.py` beside it (another version installed apart); `--list` prints the whole inventory, and `--toc` without `--phrase` shows it too. `--only DIR` (repeatable) scans only the skills
 in `DIR/<name>/`, nothing from the config dirs or the project: for tests and fixture folders. A file
 `scripts/roots` (one folder per line, `#` comments; copy `scripts/roots.example`; machine-local, not committed) adds more
 folders, like `--root`. The `--task` ranking is by keywords, so it finds candidates; it does not decide. A `LOW CONFIDENCE` line
@@ -65,7 +68,10 @@ What it cannot see: Claude Code's bundled skills (for example dataviz, code-revi
 are not on disk. Your own session's skill list is the ground truth for what you can invoke right now, so check it
 too. The state labels come from the install records and the settings a session started in the current folder reads (a folder
 whose own settings enable a plugin gets it; the config dir not in use is labelled by its own `settings.json`), and can disagree
-with a live session.
+with a live session. A user or project skill that `skillOverrides` there hides or shortens (an entry under its folder name, not
+its frontmatter `name`) reads `user skill, off in settings` (hidden from Claude and from the `/` menu), `user skill,
+user-invocable only in settings` (only the person can invoke it) or `user skill, name only in settings`,
+and `project skill, ...` alike; plugin skills are not affected.
 
 ## 2. Read, then decide
 
@@ -100,7 +106,14 @@ python3 ~/.claude/skills/skill-finder/scripts/find_skills.py --remove --into DIR
 ```
 
 This works for a disabled or never-installed plugin's skill, because a session started in DIR sees the copy as a
-project skill. When two skills share a name, `--source` picks one by part of its source label or its path. Nothing global changes: it never edits `settings.json`. Use a run folder or worktree for DIR,
-not a repo the person works in. If it prints `WARNING: refers to CLAUDE_PLUGIN_ROOT`, that skill's scripts may
-not work from the copy; say so in the report. Turning a plugin on for every session is the person's call
+project skill. That also puts the copy under `skillOverrides` by its folder name, the skill's bare name: `off` or
+`user-invocable-only` for that name in a file a session in DIR reads (your `settings.json`, DIR's `.claude/settings.json` or
+`settings.local.json`, or the `settings.local.json` at DIR's repo root, for a linked worktree the main checkout's root, so an
+entry the `/skills` menu saved there reaches a worktree DIR) keeps Claude from invoking the copy. The same entry also hides the original wherever
+that file is read (always for a user skill, or for an entry in your `settings.json`); for a plugin skill only the copy is hidden, since `skillOverrides` does not apply to plugin skills. One in another project's files (the `/skills` menu saves to that project's
+`.claude/settings.local.json`) does not reach DIR. A user skill in a folder of that name runs instead of the copy (personal
+beats project). When two skills share a name, `--source` picks one by part of its source label or its path. Nothing global changes: it never edits `settings.json`. Use a run folder or worktree for DIR,
+not a repo the person works in. If it prints a `WARNING` line, say so in the report: `refers to CLAUDE_PLUGIN_ROOT` (that
+skill's scripts may not work from the copy), `skillOverrides sets ...` (Claude cannot invoke the copy) or `a user skill of that
+name is at ...` (a session in DIR runs that one). Turning a plugin on for every session is the person's call
 (`enabledPlugins` in settings); never do it unasked.
