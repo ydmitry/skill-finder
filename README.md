@@ -16,26 +16,23 @@ matched. Claude can then read the one that fits, or
 you can copy it into a folder you start a fresh session in. It never edits `settings.json`; beyond the folder you clone, the
 only change to your setup is the `CLAUDE.md` lines you add.
 
-What the tests show: with the `CLAUDE.md` block, Claude runs the finder and opens skills it could not otherwise see. What they
-do not show: that the finished work is better.
+What the tests show: with the `CLAUDE.md` block, Sonnet runs the finder and opens skills it could not otherwise see (one in 44
+of 50 runs, against none in 30 runs without the block; ten requests, the first turn only); Haiku, on the same requests, mostly
+answered without running it. What they do not show: that the finished work is better. In my own sessions in the nine days after
+I added the block, the finder ran in 6 of 26, and in 2 of them a skill it listed was invoked or its `SKILL.md` read afterwards.
+The tests are under [Does it work?](#does-it-work).
 
-**Why not just enable them?** Enable the ones you know you need. The rest you would first have to find: a marketplace you add
-brings every plugin in it, a team repo can hold dozens of skills, and nobody reads them all. Enabling everything has a cost in
-every session. A plugin loads all its skills, commands, agents, hooks and MCP servers, and every skill in the skill list adds to
-the context of every turn, so [Claude Code's docs](https://code.claude.com/docs/en/skills#find-unused-skills) advise turning off
-the ones you never use (`/skill-doctor` lists them). The list also has a budget, 1% of the context window (about 30,000
-characters on a current 1M-token model, 6,000 to 8,000 on a 200k one); past it, each skill keeps its name and the least-used
-lose their description. In one of my sessions the list held 215 skills and commands, 154 of them by name alone. In a 200-skill
-Haiku test that loss did no measurable harm, and a skill whose name says what it does can stay listed by name only
-(`"name-only"` in `skillOverrides`; the docs say it goes by skill name, and Claude Code matches the skill's folder name): in a
-test of three such skills, Sonnet opened them in 15 of 15 runs with or without the `CLAUDE.md` block.
+**Why not just enable them?** Enable the plugins you know you need. Claude Code gives its skill list a budget of 1% of the
+context window and, past that, drops the descriptions of the skills you invoke least, keeping their names; a 200-skill Haiku
+test could not measure any harm from that.
+The finder is for the skills you cannot enable without first finding them: in a marketplace you added but never installed, in
+a team or public repo you cloned, or in a plugin you turned off.
 
-skill-finder is for the rest. The `CLAUDE.md` block below (about 220 tokens in every session) has Claude look the skills up
-before a task's first edit. A lookup lists at most 10 skills whose `SKILL.md` holds the phrase (and up to 5 that hold it only
-in reference files), each with its description and the line that matched, so Claude can rule candidates out without opening
-them: in my tests a lookup that found something printed about 3,800 characters in the median and up to about 8,800, where the
-median `SKILL.md` on my machine is about 8,000. Claude can read most skills from their files without enabling them; whether it
-then follows one as well as an enabled skill is not measured.
+The `CLAUDE.md` block below (about 220 tokens in every session) has Claude look the skills up before a task's first edit. A
+lookup lists at most 10 skills whose `SKILL.md` holds the phrase (and up to 5 that hold it only in reference files), each with
+its description and the line that matched: in my tests about 3,800 characters in the median, up to about 8,800. Claude can
+read most skills from their files without enabling them; whether it then follows one as well as an enabled skill is not
+measured.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/where-it-looks-dark.png">
@@ -141,8 +138,18 @@ It lists the skills whose SKILL.md contains the phrase, best first. Look up seve
 Open the best match's SKILL.md before writing anything, and follow it. Search again only if it does not fit. No match means proceed without a skill. Skip for one-line answers and when the task names its skills.
 ```
 
+If your permission rules allow the finder by its command (for example
+`Bash(python3 ~/.claude/skills/skill-finder/scripts/find_skills.py *)`), Claude Code checks each part of a chained command on
+its own, so plain finder calls, one phrase each, alone or chained with `;` or `&&`, pass. A shell loop does not, nor does a `cd`
+outside your working folders: expect a prompt, or a refusal in unattended runs. In a test, Opus put its phrases in a loop in
+all 20 runs (14 of them as `cd /tmp && for p in ...; do ...; done`), and all 20 were refused. In the subagent variant below,
+the line "Run one phrase per command, with no cd and no loop" kept every Opus subagent to plain calls; the block with that line
+added is untested.
+
 **A skill it finds is trusted like one you installed.** The block has Claude follow the best match, also when it comes from
 a marketplace or repo you never installed and may never have read, and a `SKILL.md` can tell Claude to run its scripts.
+The best match is picked by keywords, not by you: a phrase in a skill's name or description ranks it first, so any `SKILL.md`
+in a searched source can put common phrases there.
 Search only sources you would install from: the marketplaces you added are searched as they are, and `scripts/roots` holds
 the rest. A plain read does not run a skill's `` !`command` `` lines, fill in `${CLAUDE_SKILL_DIR}` or `${CLAUDE_PLUGIN_ROOT}`,
 or apply its frontmatter (`allowed-tools`, `context: fork`, `hooks`, `model`); such a skill works only when Claude Code loads
@@ -150,9 +157,9 @@ it: its plugin enabled, or a copy made with `--enable`, which runs `` !`command`
 not `${CLAUDE_PLUGIN_ROOT}`.
 
 The tested text said "No match, or a LOW CONFIDENCE one"; only the keyword search (`--task`) prints `LOW CONFIDENCE`, never
-`--phrase`, so that clause is left out here. The block costs about 220 tokens in every session. In a Haiku test,
-a longer version of this text worked better added to the task of an unattended run (such as `claude -p` with a task) than in
-`CLAUDE.md` (below), so put it in such a task too. The block predates reference hits: when only a skill's reference file
+`--phrase`, so that clause is left out here. The block costs about 220 tokens in every session. In a Haiku test on
+unattended runs (such as `claude -p` with a task), a longer version of this text, not published here, got the skill opened in
+15 of 15 runs when added to the task and in 9 of 15 when left in `CLAUDE.md`; the block above has not been tried in a task. The block predates reference hits: when only a skill's reference file
 holds the phrase, the output names that skill and the file, which counts as a match. To see whether it works for
 you, count the transcripts in which Claude ran the finder:
 
@@ -195,11 +202,11 @@ In short: it helps Claude find and open skills it could not otherwise see, and a
 except a second skill whose need shows only in the files (the optional `Second lookups` section).
 Most tests measure whether Claude ran the finder and opened the skill, not whether the work came out better; the tests of the
 `Second lookups` section check whether a skill's rules reached Claude before a check on the output asked for them. They were
-run with Claude Haiku and Sonnet, their harness is not published (several tests run on one machine's own config and skills,
+run with Claude Haiku and Sonnet (the subagent tests also with Opus), their harness is not published (several tests run on one machine's own config and skills,
 some of them private; the others on a local copy of 927 public skills that is not redistributed), and they are small: read
-them as directions, not rates. The model tests ran when a `--phrase` lookup listed up to 40 skills; the default is now 10. All
-the model tests except those of the `Second lookups` section ran before `--phrase` also
-read reference files. Two tests need no model: the
+them as directions, not rates. The model tests ran when a `--phrase` lookup listed up to 40 skills, except the subagent tests, which
+ran at today's default of 10. All the model tests except those of the `Second lookups` section and the subagent tests ran
+before `--phrase` also read reference files. Two tests need no model: the
 reference-file replay above, which replays the unpublished runs' lookups, and the benchmark in the last paragraph of this
 section, whose scripts are published in `bench/skillret/`.
 
@@ -210,7 +217,9 @@ opened none of those skills. With it, it ran the finder in all 50 runs, had the 
 exact skill in 68%, and in 88% opened at least one skill it could not otherwise see, the right one or not. Seven of the ten skills were opened in four or five of
 five runs; two of the misses were requests that fit another unseen skill as well, one was a short skill whose words the
 request did not share. Ten skills, one model, the first turn only (nothing is written, so whether the skill was followed is
-not measured), and requests written by a model that had read each skill: a direction, not a rate.
+not measured), and requests written by a model that had read each skill: a direction, not a rate. A later Sonnet rerun at
+today's default of 10 hits, counted more strictly (only skills opened before the reply reached 1,000 characters), opened an
+unseen skill in 14 of 20 runs and the exact one in 11 of 20.
 
 **Why the instruction is needed.** None of the `SKILL.md` descriptions tried, one of them saying "use at the start of EVERY
 task", got the skill called: 0 of 232 runs. The models call the skill whose topic matches the task (a chart skill for a chart) and never a skill whose
@@ -223,9 +232,21 @@ runs (four tasks, two runs each) and in none of 4 one-line questions. With the l
 those it was a skill it opens without the finder, and for the task whose best skill is not in its own skill list (a colour
 theme) it opened the finder's pick in 2 of 2. Subagents read the same file and did the same in 8 of 8 delegated runs, at
 about three lookups each before their first edit; a coordinator that only handed the task over looked nothing up (0 of 8),
-so those lookups stay out of the main conversation. In placement tests with Haiku on unattended runs, a longer version of
+so a coordinator's main conversation does not see those lookups. In placement tests with Haiku on unattended runs, a longer version of
 this text in `CLAUDE.md` got the finder run every time, but the skill opened in 9 of 15 runs; added to the task itself, the
 same text got it opened in 15 of 15. The line "open the best match's SKILL.md before writing anything" has not been measured.
+On Haiku the block rarely fired on the ten unseen-skill requests, nine of which ask for a written answer rather than an edit:
+in 18 of 20 runs Haiku answered with no tool call at all, and the 2 runs that ran the finder were both on the one request for a
+file. Sonnet ran the finder first in all 20 runs on the same requests. In these runs the block came as an addition to the
+system prompt, not from `CLAUDE.md`.
+
+**The lookup in a subagent.** A variant of the block that hands the lookup to a subagent, tested against the block on Haiku,
+Sonnet and Opus with a bar set before the runs, did not pass on any model. On Sonnet, the only model where both versions ran
+their search, in the 7 pairs where both found the skill the main conversation still received 84% as much text: the finder's
+output (about 30% of what the block put there) stayed out, but the subagent's report and the skill and its references, read
+in the main conversation either way, made up the rest. On Sonnet it also cost about 1.5 times as much in total. On Haiku the
+block's runs mostly made no tool call, and on Opus the allow rule refused the block's searches (above), so there was little to
+compare. The block stays as it is.
 
 **A second skill the files reveal mid-task** (the optional `Second lookups` section). Each test task asked for one thing
 (review a pull request, summarise a survey, fix a bug) and hid a second need in its files. A scripted check passed the work
@@ -250,8 +271,8 @@ surcharge in a newsletter item), the section reached it in 17 of 24 Haiku runs a
 also names rules and policies, and it decided nothing, because the block alone reached it in 9 of 30 runs over five such tasks,
 above the limit set before the runs, 6 of them on a litigation hold. The block alone also found a few needs that were easy to
 guess (a database migration, a cron parser, the litigation hold). The misses were missing lookups, not failed searches: in the
-rerun, none of the 73 runs that missed with the block alone or with the section had searched for the second need before the
-check said the work was incomplete.
+rerun, no run that missed, with the block alone or with the section, had searched for the second need before the check said
+the work was incomplete.
 
 **What the `Second lookups` section costs.** Four ordinary tasks (a styled page, a project plan, search ads, and an incident
 write-up whose notes do hold a second need, a PostgreSQL index built without CONCURRENTLY), Haiku, eight runs each with and
@@ -327,7 +348,7 @@ python3 -m unittest discover -s tests
 
 Experimental. The finder lists candidates by keywords or by an exact phrase; it does not decide. Experiments on whether a worker
 opens the right skill (not part of this repository) found that where the instruction to search sits matters, and that the
-best-match block a phrase search prints (shown above) got the right skill opened more often in a Haiku test (12 of 15 runs
+"Best match:" block a phrase search prints at the end (shown in the example above) got the right skill opened more often in a Haiku test (12 of 15 runs
 against 9) but did not get more tasks done (8 against 9). `TODO.md` lists what is open.
 
 ## License
