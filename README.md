@@ -103,7 +103,12 @@ reference files), Claude found the right skill about as often with plain `grep` 
   `release-notes`).
 - **Reference files.** Many skills keep most of their text in reference files (`.md` and `.txt` files in the skill's
   folder, `references/` first; log, test and hidden folders are skipped). A skill that holds the phrase only there is listed
-  after the `SKILL.md` hits, up to five, with the file and line. In a replay of 894 lookups recorded in four test tasks (no
+  after the `SKILL.md` hits, up to five, with the file and line. A listed skill's row also shows, with file and line, each
+  looked-up phrase that only its reference files hold (up to three), and then the names of its reference files (up to
+  eight). In a small Sonnet test on 16 made-up skills with long files (20 cases where the rule sat in a reference file of a
+  skill about another topic), Claude followed the rule in 20 cases with these lines against 8 without them; with the
+  reference files renamed `part-1.md` and so on, in 15 against 5. The file-and-line hits did that work: the list of names
+  led Claude to the file only when the names said what was inside. A lookup's output grows by about 6 to 20%. In a replay of 894 lookups recorded in four test tasks (no
   model), the right skill was in the first ten for 213 of the 294 lookups that no `SKILL.md` matched, against 205 without it
   (first three: 126 against 113). All of the gain at ten came from one task, whose words sit in its reference files; the
   other three neither gained nor lost there.
