@@ -647,12 +647,12 @@ def excerpt(path, pats):
 def reference_only(e, pats, held):
     """The phrases a skill holds in a reference file (see prepare) but not in SKILL.md or its name (`held`), in the order they were
     typed. Each comes with the first reference file that holds it and the line where that phrase first matches there."""
-    out = {}
+    out, held = {}, {pt.pattern for ph, pt in pats if ph in held}     # by pattern: "torch" and "Torch" are one phrase
     for ph, pt in pats:
-        f = None if ph in held or ph in out else next((f for f, text in e["_refs"] if pt.search(text)), None)
+        f = None if pt.pattern in held or pt.pattern in out else next((f for f, text in e["_refs"] if pt.search(text)), None)
         if f:
             line, text, _ = excerpt(f, [(ph, pt)])
-            out[ph] = dict(phrase=ph, file=str(f.relative_to(e["dir"])), line=line, text=text)
+            out[pt.pattern] = dict(phrase=ph, file=str(f.relative_to(e["dir"])), line=line, text=text)
     return list(out.values())
 
 def reference_files(e):
@@ -661,7 +661,7 @@ def reference_files(e):
 
 def reference_hits(entries, pats, shown, held):
     """Skills outside the shown rows (`shown`) that hold a phrase in their reference files (see prepare) and not in SKILL.md or the
-    name: more such phrases first, then more files (five count), then the name. `held` gives the phrases a SKILL.md hit holds there,
+    name: skills whose SKILL.md holds no phrase first, then more such phrases, then more files (five count), then the name. `held` gives the phrases a SKILL.md hit holds there,
     which do not count for it. Each comes with its first matching line and the phrase on it."""
     out = []
     for e in entries:
@@ -674,7 +674,7 @@ def reference_hits(entries, pats, shown, held):
             files += 1
             found += [ph for ph in here if ph not in found]
             if first is None: first = (str(f.relative_to(e["dir"])), *excerpt(f, mine))
-        if found: out.append(((-len(found), -min(files, 5), e["name"]), e, found, first))
+        if found: out.append(((id(e) in held, -len(found), -min(files, 5), e["name"]), e, found, first))
     out.sort(key=lambda h: h[0])
     return out
 

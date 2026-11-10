@@ -184,6 +184,24 @@ class ReferenceOnly(unittest.TestCase):
         row = self.row(text, "camping")
         self.assertEqual([ln.strip().split(" ")[0] for ln in row[2:]], [":7:", ":references/torches.md:1:", "references:", "also"], row)
 
+    def test_skills_whose_skill_md_holds_no_phrase_come_before_hits_beyond_the_limit_in_the_block(self):
+        self.make({"a-shown": skill("a-shown", "children children"), "b-later": skill("b-later", "The children walk."),
+                   "z-none": skill("z-none", "Nothing.")},
+                  {"b-later": {"references/r.md": "a torch\n", "references/s.md": "a lamp\n"},
+                   "z-none": {"references/r.md": "a torch\n"}})
+        out = self.json_of("children", "torch", "lamp", extra=("--limit", "1"))
+        self.assertEqual([c["name"] for c in out["candidates"]], ["a-shown"])
+        out = self.json_of("children", "torch", "lamp", extra=("--limit", "2"))        # b-later is shown now, z-none is the block
+        self.assertEqual([r["name"] for r in out["reference_hits"]], ["z-none"])
+        self.make({"c-later": skill("c-later", "children")}, {"c-later": {"references/r.md": "a torch\n", "references/s.md": "a lamp\n"}})
+        out = self.json_of("children", "torch", "lamp", extra=("--limit", "2"))
+        self.assertEqual([r["name"] for r in out["reference_hits"]], ["z-none", "c-later"])       # c-later holds more phrases there, and is a hit
+
+    def test_two_spellings_of_one_phrase_get_one_line(self):
+        self.make({"camping": skill("camping", "Take the children along.")}, {"camping": {"references/t.md": "one torch\n"}})
+        row = self.row(self.run_finder("children", "torch", "Torch"), "camping")
+        self.assertEqual(len([ln for ln in row if "references/t.md:1:" in ln]), 1)
+
     def test_toc_mode_prints_none_of_it(self):
         self.make({"camping": skill("camping", "Take the children along.")},
                   {"camping": {"references/torches.md": "one torch\n"}})
