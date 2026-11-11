@@ -31,7 +31,7 @@ It says how many skills match; when more than 10 do, use a longer phrase, or `--
 files (`.md`/`.txt` in the skill's folder, `references/` first, no log, test or hidden folders, up to 120 files of up to
 2 MB a skill) follow, up to 5, with the file and line: open that skill's `SKILL.md`, then the file. Under a listed skill's
 row, a line `:references/<file>:<line>: <text>  ("<phrase>")` is a looked-up phrase that only its reference files hold (up to
-3): open that file. A `references:` line names its reference files (up to 8): open one when its name fits the task. When no `SKILL.md` holds
+3): open that file. A `references:` line names its reference files (up to 8, those that hold the looked-up phrases first; a phrase few of the skill's files hold counts most): open one when its name fits the task. A skill with more files than the line names may hold a better one: list its folder when none of the named fits. When no `SKILL.md` holds
 it, those come first; then it says how many skills hold each word of the phrase in `SKILL.md` or reference files (a word
 held by none is not how any skill says it) and lists up to 10 skills nearest by words, not repeating those above, the first
 3 with their descriptions: use fewer words or the other form of the word, or open one of them if it fits.

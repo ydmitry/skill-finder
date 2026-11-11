@@ -18,7 +18,7 @@ def skill(name, body="body", description="x"):
     return f"---\nname: {name}\ndescription: {description}\n---\n\n# {name}\n{body}\n"
 
 
-class ReferenceOnly(unittest.TestCase):
+class Base(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.tmp = Path(self._tmp.name)
@@ -52,6 +52,8 @@ class ReferenceOnly(unittest.TestCase):
         end = next((i for i in range(at + 1, len(lines)) if not lines[i].startswith("   ")), len(lines))
         return lines[at:end]
 
+
+class ReferenceOnly(Base):
     def test_a_phrase_only_in_a_reference_file_of_a_listed_skill_is_shown_with_file_line_and_phrase(self):
         self.make({"camping": skill("camping", "Take the children along.")},
                   {"camping": {"references/torches.md": "# Lights\n\nBring one torch for each pair.\n"}})
@@ -210,6 +212,86 @@ class ReferenceOnly(unittest.TestCase):
         self.assertNotIn("references:", text)
         c = self.json_of("children", "torch", extra=("--toc",))["candidates"][0]
         self.assertFalse({"reference_only", "references"} & set(c))
+
+
+class ReferenceOrder(Base):
+    """Which reference files a row names when it cannot name them all, and which file a hit line is taken from: the files that hold
+    most of the looked-up phrases, not the first in the folder."""
+
+    def many(self, special):
+        refs = {f"references/a{i:02d}.md": "nothing of note here\n" for i in range(1, 13)}
+        refs.update(special)
+        self.make({"camping": skill("camping", "for children")}, {"camping": refs})
+
+    def listed(self, text, name="camping"):
+        line = next(ln for ln in self.row(text, name) if ln.startswith("   references: "))
+        return line[len("   references: "):].split(" (+")[0].split(", ")
+
+    def test_a_file_that_holds_a_looked_up_phrase_is_named_first_in_a_cut_list(self):
+        self.many({"references/a11.md": "one zebra crossing\n"})
+        names = self.listed(self.run_finder("children", "zebra"))
+        self.assertEqual(names[0], "references/a11.md")
+        self.assertEqual(len(names), 8)
+        self.assertEqual(names[1:3], ["references/a01.md", "references/a02.md"])           # the rest keep their order
+
+    def test_a_file_whose_name_holds_a_phrase_counts_too(self):
+        self.many({"references/a12-zebra-crossing.md": "nothing here either\n"})
+        self.assertEqual(self.listed(self.run_finder("children", "zebra"))[0], "references/a12-zebra-crossing.md")
+
+    def test_more_phrases_held_comes_before_fewer(self):
+        self.many({"references/a09.md": "a zebra\n", "references/a10.md": "a zebra and a lantern\n"})
+        self.assertEqual(self.listed(self.run_finder("children", "zebra", "lantern"))[:2], ["references/a10.md", "references/a09.md"])
+
+    def test_no_phrase_in_any_reference_file_keeps_the_order(self):
+        self.many({})
+        self.assertEqual(self.listed(self.run_finder("children"))[:3], ["references/a01.md", "references/a02.md", "references/a03.md"])
+
+    def test_a_phrase_the_skill_md_holds_also_ranks_a_file(self):
+        self.many({"references/a12.md": "the children again\n"})
+        self.assertEqual(self.listed(self.run_finder("children"))[0], "references/a12.md")
+
+    def test_the_hit_line_comes_from_the_file_that_holds_most_phrases(self):
+        self.make({"camping": skill("camping", "for children")},
+                  {"camping": {"references/a-first.md": "one torch\n", "references/z-best.md": "tent\nlantern\nthe torch is here\n"}})
+        c = self.json_of("children", "torch", "lantern", "tent")["candidates"][0]
+        self.assertEqual({x["phrase"]: x["file"] for x in c["reference_only"]},
+                         {"torch": "references/z-best.md", "lantern": "references/z-best.md", "tent": "references/z-best.md"})
+        self.assertEqual(c["references"], ["references/z-best.md", "references/a-first.md"])
+
+    def test_a_phrase_few_files_hold_outweighs_phrases_many_hold(self):
+        refs = {f"references/a{i:02d}.md": "focus and remote\n" for i in range(1, 11)}          # two common phrases in ten files
+        refs["references/a11.md"] = "the side menu\n"                                          # one phrase no other file holds
+        self.make({"camping": skill("camping", "for children")}, {"camping": refs})
+        names = self.listed(self.run_finder("children", "focus", "remote", "side menu"))
+        self.assertEqual(names[0], "references/a11.md")
+
+    def test_the_hit_line_of_a_common_phrase_comes_from_the_file_with_the_rare_ones(self):
+        refs = {f"references/a{i:02d}.md": "focus and remote and a dialog\n" for i in range(1, 6)}
+        refs["references/nav.md"] = "tabs\nthe side menu\na dialog here\n"
+        self.make({"camping": skill("camping", "for children")}, {"camping": refs})
+        c = self.json_of("children", "dialog", "focus", "remote", "tabs", "side menu")["candidates"][0]
+        self.assertEqual({x["phrase"]: x["file"] for x in c["reference_only"]}["dialog"], "references/nav.md")
+
+    def test_identical_copies_of_a_file_take_one_place_in_the_list(self):
+        refs = {f"copy{i}/guide.md": "one zebra crossing\n" for i in range(1, 9)}
+        refs["other.md"] = "a zebra too, and more\n"
+        self.make({"camping": skill("camping", "for children")}, {"camping": refs})
+        text = self.run_finder("children", "zebra")
+        names = self.listed(text)
+        self.assertEqual(sorted(names), ["copy1/guide.md", "other.md"])
+        self.assertIn("(+7 more, copies of these)", "\n".join(self.row(text, "camping")))
+        self.assertEqual(len(self.json_of("children", "zebra")["candidates"][0]["references"]), 9)        # --json keeps every path
+
+    def test_the_best_match_names_the_same_files(self):
+        self.many({"references/a11.md": "one zebra crossing\n"})
+        text = self.run_finder("children", "zebra")
+        best = next(ln for ln in text.splitlines() if ln.startswith("References: "))
+        self.assertTrue(best.startswith("References: references/a11.md, references/a01.md"), best)
+        self.assertEqual(self.json_of("children", "zebra")["best"]["references"][0], "references/a11.md")
+
+    def test_a_skill_shown_only_for_its_reference_files_is_not_changed(self):
+        self.make({"camping": skill("camping", "tents")}, {"camping": {"references/a.md": "x\n", "references/b.md": "a zebra\n"}})
+        self.assertIn(":references/b.md:1: a zebra", self.run_finder("zebra"))
 
 
 if __name__ == "__main__":

@@ -20,7 +20,8 @@ SKILL.md and references/. It finds candidates; a model reading them decides.
 `grep -il`), then listed compactly: the best 10 by a phrase in the name, then in the description, then how often it occurs; when
 more skills hold it, the header says how many and that --limit 40 lists more.
 Under a listed skill come the looked-up phrases that only its reference files hold, each with file:line (at most 3, then how many
-more), and a line that names its reference files (the first 8).
+more), and a line that names its reference files (8 at most: those that hold the looked-up phrases first, a phrase few of the
+skill's files hold counting most; copies of one file take one place).
 Up to 5 skills that are not listed and hold a phrase only in their reference files follow, with file:line and the phrase: skills whose
 SKILL.md holds none of the phrases, and hits beyond --limit. When no SKILL.md holds the phrase those come first; then it says how many
 skills hold each word and lists the 10 nearest by the --task ranking.
@@ -585,7 +586,7 @@ def print_best(b):
     if b["lines"]:
         print("First lines of SKILL.md:"); [print(("  " + ln) if ln else "") for ln in b["lines"]]
     if b["references"]:
-        print("References: " + ", ".join(b["references"][:8]) + (f" (+{len(b['references']) - 8} more)" if len(b["references"]) > 8 else ""))
+        print("References: " + names_line(b.get("references_distinct", b["references"]), len(b["references"]), ROW_REF_FILES))
     print(f'Read {b["path"]}, then follow it; search again only if it does not fit.')
 
 def phrase_sections(shown):
@@ -644,20 +645,55 @@ def excerpt(path, pats):
     cut = max(0, m.start() - start - 40) if len(line) > 140 else 0
     return text.count("\n", 0, m.start()) + 1, ("..." if cut else "") + " ".join(line[cut:cut + 140].split()), ph
 
+def ranked_refs(e, pats):
+    """A skill's reference files (see prepare), those that fit the looked-up phrases best first. A file scores, for each phrase its
+    text or its path inside the skill holds, one over the number of the skill's reference files that hold that phrase: a phrase
+    two files hold tells more than one thirty hold. A phrase in the path counts once more. Files that score the same keep the
+    order they are read in. A skill with fifty reference files can name eight in its row; these are the eight to name."""
+    key = tuple(pt.pattern for _, pt in pats)
+    if e.get("_ranked_for") != key:
+        rels = [str(f.relative_to(e["dir"])).lower() for f, _ in e["_refs"]]
+        held = [{pt.pattern for pt in {pt for _, pt in pats} if pt.search(text) or pt.search(rel)} for (_, text), rel in zip(e["_refs"], rels)]
+        df = {}
+        for h in held:
+            for pat in h: df[pat] = df.get(pat, 0) + 1
+        named = [sum(1 for pt in {pt for _, pt in pats} if pt.search(rel)) for rel in rels]
+        score = [sum(1 / df[pat] for pat in h) + k for h, k in zip(held, named)]
+        order = sorted(range(len(e["_refs"])), key=lambda i: (-score[i], i))
+        e["_ranked"], e["_ranked_for"] = [e["_refs"][i] for i in order], key
+    return e["_ranked"]
+
+def distinct_refs(e, pats=()):
+    """reference_files without the copies: of files with the same name and the same text (a skill that nests another holds its
+    files twice), the first one. A list of eight names should name eight texts."""
+    seen, out = set(), []
+    for f, text in ranked_refs(e, pats):
+        k = (f.name, hashlib.sha1(text.encode()).hexdigest()) if text else str(f)
+        if k not in seen: seen.add(k); out.append(str(f.relative_to(e["dir"])))
+    return out
+
+def names_line(names, total, n):
+    """`n` reference file names, then how many more the skill has; `names` are distinct texts, `total` counts the copies too."""
+    more = total - min(n, len(names))
+    tail = "" if not more else f" (+{more} more, copies of these)" if len(names) <= n else f" (+{more} more)"
+    return ", ".join(names[:n]) + tail
+
 def reference_only(e, pats, held):
     """The phrases a skill holds in a reference file (see prepare) but not in SKILL.md or its name (`held`), in the order they were
-    typed. Each comes with the first reference file that holds it and the line where that phrase first matches there."""
+    typed. Each comes with the reference file that holds it and most of the other looked-up phrases (see ranked_refs), and the line
+    where that phrase first matches there."""
     out, held = {}, {pt.pattern for ph, pt in pats if ph in held}     # by pattern: "torch" and "Torch" are one phrase
     for ph, pt in pats:
-        f = None if pt.pattern in held or pt.pattern in out else next((f for f, text in e["_refs"] if pt.search(text)), None)
+        f = None if pt.pattern in held or pt.pattern in out else next((f for f, text in ranked_refs(e, pats) if pt.search(text)), None)
         if f:
             line, text, _ = excerpt(f, [(ph, pt)])
             out[pt.pattern] = dict(phrase=ph, file=str(f.relative_to(e["dir"])), line=line, text=text)
     return list(out.values())
 
-def reference_files(e):
-    """A skill's reference files as paths inside its folder, in the order they are read (and the best match lists them)."""
-    return [str(f.relative_to(e["dir"])) for f, _ in e["_refs"]]
+def reference_files(e, pats=()):
+    """A skill's reference files as paths inside its folder: those that hold most of the looked-up phrases first (see ranked_refs),
+    the rest in the order they are read."""
+    return [str(f.relative_to(e["dir"])) for f, _ in ranked_refs(e, pats)]
 
 def reference_hits(entries, pats, shown, held):
     """Skills outside the shown rows (`shown`) that hold a phrase in their reference files (see prepare) and not in SKILL.md or the
@@ -682,7 +718,7 @@ def phrase_search(entries, phrases, limit, as_json, toc=False):
     """`grep -il` over the whole SKILL.md of every skill, but ranked (so the shown ones do not depend on directory order) and
     compact: a phrase in the name first, then in the description, then how often it occurs. Several phrases are alternatives; a
     skill that holds more of them comes first. Under each shown skill: the phrases that only its reference files hold, with
-    file:line (ROW_REF_PHRASES at most, then how many more), and its reference files (the first ROW_REF_FILES). Then up to REF_SHOWN
+    file:line (ROW_REF_PHRASES at most, then how many more), and its reference files (ROW_REF_FILES at most, see ranked_refs). Then up to REF_SHOWN
     skills that are not shown and hold a phrase only in their reference files, with file:line and the phrase: skills whose SKILL.md
     holds none, and hits beyond `limit`. With `toc` the hits print as sections (phrase in the name, the description, the body), one
     sentence each, no best match, and reference files are not read."""
@@ -713,7 +749,7 @@ def phrase_search(entries, phrases, limit, as_json, toc=False):
             for _, e, found, line, _ in shown]
     if not toc:
         prepare(entries)
-        for r, (_, e, found, _, _) in zip(rows, shown): r.update(reference_only=reference_only(e, pats, found), references=reference_files(e))
+        for r, (_, e, found, _, _) in zip(rows, shown): r.update(reference_only=reference_only(e, pats, found), references=reference_files(e, pats), references_distinct=distinct_refs(e, pats))
     refs = reference_hits(entries, pats, {id(h[1]) for h in shown}, {id(h[1]): h[2] for h in hits}) if not toc else []
     ref_rows = [dict(name=e["name"], status=e["status"], source=e["source"], path=str(e["dir"] / "SKILL.md"), phrases=found,
                      description=" ".join(e["description"].split())[:110], match=f"{first[0]}:{first[1]}: {first[2]}")
@@ -727,6 +763,7 @@ def phrase_search(entries, phrases, limit, as_json, toc=False):
     nearest = near[:CLOSEST]
     shown_near = [r for r in near if r["path"] not in {x["path"] for x in ref_rows}][:CLOSEST]      # a skill shown above is not listed twice
     best = best_match(hits) if hits and not toc else None
+    if best: best.update(references=rows[0]["references"], references_distinct=rows[0]["references_distinct"])      # the best match is the first row: the same files, in the same order
     sections = phrase_sections(shown) if toc else None
     if as_json:
         out = dict(phrases=phrases, scanned=len(entries), matched=len(hits), shown=len(rows), candidates=rows)
@@ -765,8 +802,7 @@ def phrase_search(entries, phrases, limit, as_json, toc=False):
         for x in r["reference_only"][:ROW_REF_PHRASES]: print(f'   :{x["file"]}:{x["line"]}: {x["text"]}  ("{x["phrase"]}")')
         if len(r["reference_only"]) > ROW_REF_PHRASES: print(f"   (+{len(r['reference_only']) - ROW_REF_PHRASES} more phrases only in its reference files)")
         if r["references"]:
-            print("   references: " + ", ".join(r["references"][:ROW_REF_FILES])
-                  + (f" (+{len(r['references']) - ROW_REF_FILES} more)" if len(r["references"]) > ROW_REF_FILES else ""))
+            print("   references: " + names_line(r["references_distinct"], len(r["references"]), ROW_REF_FILES))
         if r["also"]: print(f"   also at: {'; '.join(r['also'][:2])}" + (f" (+{len(r['also']) - 2} more)" if len(r["also"]) > 2 else ""))
     if ref_rows:
         print(f"\nOnly in reference files ({len(refs)} skill(s) not listed above hold there a phrase their SKILL.md does not{more}):")
