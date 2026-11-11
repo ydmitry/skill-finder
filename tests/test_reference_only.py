@@ -282,6 +282,42 @@ class ReferenceOrder(Base):
         self.assertIn("(+7 more, copies of these)", "\n".join(self.row(text, "camping")))
         self.assertEqual(len(self.json_of("children", "zebra")["candidates"][0]["references"]), 9)        # --json keeps every path
 
+    def test_a_folder_name_that_holds_a_phrase_does_not_flood_the_list(self):
+        refs = {f"references/api/a{i:02d}.md": "nothing of note here\n" for i in range(1, 11)}
+        refs["references/guides/nav.md"] = "the side menu\n"
+        self.make({"camping": skill("camping", "for children")}, {"camping": refs})
+        self.assertEqual(self.listed(self.run_finder("children", "side menu", "api"))[0], "references/guides/nav.md")
+
+    def test_a_phrase_in_the_name_and_the_text_comes_before_the_text_alone(self):
+        self.many({"references/a05.md": "about a zebra\n", "references/a12-zebra.md": "about a zebra\n"})
+        self.assertEqual(self.listed(self.run_finder("children", "zebra"))[:2], ["references/a12-zebra.md", "references/a05.md"])
+
+    def test_the_hit_line_of_a_phrase_comes_from_the_file_named_for_it(self):
+        self.make({"camping": skill("camping", "for children")},
+                  {"camping": {"references/all.md": "ice, price, change and a sign\n", "references/ice-box.md": "keep the ice cold\n"}})
+        c = self.json_of("children", "ice", "price", "change", "sign")["candidates"][0]
+        self.assertEqual({x["phrase"]: x["file"] for x in c["reference_only"]}["ice"], "references/ice-box.md")
+
+    def test_the_hit_lines_of_a_row_name_different_files_when_they_can(self):
+        self.make({"camping": skill("camping", "for children")},
+                  {"camping": {"references/all.md": "ice, price and change\n", "references/cool.md": "ice here\n", "references/money.md": "the change\n"}})
+        c = self.json_of("children", "price", "change", "ice")["candidates"][0]
+        self.assertEqual({x["phrase"]: x["file"] for x in c["reference_only"]},
+                         {"price": "references/all.md", "change": "references/money.md", "ice": "references/cool.md"})
+
+    def test_a_limit_of_no_rows_still_gives_the_best_match(self):
+        self.many({"references/a11.md": "one zebra crossing\n"})
+        self.assertIn("Best match: camping", self.run_finder("children", "zebra", extra=("--limit", "0")))
+
+    def test_the_tail_of_a_list_with_copies(self):
+        refs = {f"references/a{i:02d}.md": f"text number {i}\n" for i in range(1, 9)}
+        refs.update({f"copy{i}/a01.md": "text number 1\n" for i in range(1, 4)})
+        self.make({"camping": skill("camping", "for children")}, {"camping": refs})
+        self.assertIn("(+3 more, copies of these)", "\n".join(self.row(self.run_finder("children"), "camping")))
+        (self.tmp / "camping" / "references" / "a09.md").write_text("text number 9\n")
+        (self.tmp / "camping" / "references" / "a10.md").write_text("text number 10\n")
+        self.assertIn("references/a08.md (+5 more)", "\n".join(self.row(self.run_finder("children"), "camping")))
+
     def test_the_best_match_names_the_same_files(self):
         self.many({"references/a11.md": "one zebra crossing\n"})
         text = self.run_finder("children", "zebra")

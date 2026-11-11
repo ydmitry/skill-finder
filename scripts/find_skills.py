@@ -647,18 +647,21 @@ def excerpt(path, pats):
 
 def ranked_refs(e, pats):
     """A skill's reference files (see prepare), those that fit the looked-up phrases best first. A file scores, for each phrase its
-    text or its path inside the skill holds, one over the number of the skill's reference files that hold that phrase: a phrase
-    two files hold tells more than one thirty hold. A phrase in the path counts once more. Files that score the same keep the
-    order they are read in. A skill with fifty reference files can name eight in its row; these are the eight to name."""
+    text holds, one over the number of the skill's reference files whose text holds that phrase: a phrase two files hold tells
+    more than one thirty hold. A phrase in its path inside the skill scores the same way, over the files whose path holds it: a
+    file named for the phrase counts, a folder that holds forty files hardly does. Files that score the same keep the order they
+    are read in. A skill with fifty reference files can name eight in its row; these are the eight to name."""
     key = tuple(pt.pattern for _, pt in pats)
     if e.get("_ranked_for") != key:
+        uniq = list({pt.pattern: pt for _, pt in pats}.values())
         rels = [str(f.relative_to(e["dir"])).lower() for f, _ in e["_refs"]]
-        held = [{pt.pattern for pt in {pt for _, pt in pats} if pt.search(text) or pt.search(rel)} for (_, text), rel in zip(e["_refs"], rels)]
-        df = {}
-        for h in held:
-            for pat in h: df[pat] = df.get(pat, 0) + 1
-        named = [sum(1 for pt in {pt for _, pt in pats} if pt.search(rel)) for rel in rels]
-        score = [sum(1 / df[pat] for pat in h) + k for h, k in zip(held, named)]
+        in_text = [{pt.pattern for pt in uniq if pt.search(text)} for _, text in e["_refs"]]
+        in_path = [{pt.pattern for pt in uniq if pt.search(rel)} for rel in rels]
+        df, pdf = {}, {}
+        for held, count in ((in_text, df), (in_path, pdf)):
+            for h in held:
+                for pat in h: count[pat] = count.get(pat, 0) + 1
+        score = [sum(1 / df[pat] for pat in t) + sum(1 / pdf[pat] for pat in p) for t, p in zip(in_text, in_path)]
         order = sorted(range(len(e["_refs"])), key=lambda i: (-score[i], i))
         e["_ranked"], e["_ranked_for"] = [e["_refs"][i] for i in order], key
     return e["_ranked"]
@@ -680,19 +683,24 @@ def names_line(names, total, n):
 
 def reference_only(e, pats, held):
     """The phrases a skill holds in a reference file (see prepare) but not in SKILL.md or its name (`held`), in the order they were
-    typed. Each comes with the reference file that holds it and most of the other looked-up phrases (see ranked_refs), and the line
-    where that phrase first matches there."""
-    out, held = {}, {pt.pattern for ph, pt in pats if ph in held}     # by pattern: "torch" and "Torch" are one phrase
+    typed. Each comes with one reference file that holds it, and the line where the phrase first matches there. Which file: one
+    whose path holds the phrase; else one that no earlier phrase of this row points at, so three lines name three files when they
+    can; among those the one that fits the whole lookup best (see ranked_refs)."""
+    out, held, used = {}, {pt.pattern for ph, pt in pats if ph in held}, set()     # by pattern: "torch" and "Torch" are one phrase
     for ph, pt in pats:
-        f = None if pt.pattern in held or pt.pattern in out else next((f for f, text in ranked_refs(e, pats) if pt.search(text)), None)
+        f = None
+        if pt.pattern not in held and pt.pattern not in out:
+            have = [(not pt.search(str(g.relative_to(e["dir"])).lower()), g in used, i, g) for i, (g, text) in enumerate(ranked_refs(e, pats)) if pt.search(text)]
+            f = min(have)[3] if have else None
+            used.add(f)
         if f:
             line, text, _ = excerpt(f, [(ph, pt)])
             out[pt.pattern] = dict(phrase=ph, file=str(f.relative_to(e["dir"])), line=line, text=text)
     return list(out.values())
 
 def reference_files(e, pats=()):
-    """A skill's reference files as paths inside its folder: those that hold most of the looked-up phrases first (see ranked_refs),
-    the rest in the order they are read."""
+    """A skill's reference files as paths inside its folder: those that fit the looked-up phrases best first (see ranked_refs), the
+    rest in the order they are read."""
     return [str(f.relative_to(e["dir"])) for f, _ in ranked_refs(e, pats)]
 
 def reference_hits(entries, pats, shown, held):
@@ -763,7 +771,7 @@ def phrase_search(entries, phrases, limit, as_json, toc=False):
     nearest = near[:CLOSEST]
     shown_near = [r for r in near if r["path"] not in {x["path"] for x in ref_rows}][:CLOSEST]      # a skill shown above is not listed twice
     best = best_match(hits) if hits and not toc else None
-    if best: best.update(references=rows[0]["references"], references_distinct=rows[0]["references_distinct"])      # the best match is the first row: the same files, in the same order
+    if best: best.update(references=reference_files(hits[0][1], pats), references_distinct=distinct_refs(hits[0][1], pats))    # the first row's files, in its order
     sections = phrase_sections(shown) if toc else None
     if as_json:
         out = dict(phrases=phrases, scanned=len(entries), matched=len(hits), shown=len(rows), candidates=rows)
