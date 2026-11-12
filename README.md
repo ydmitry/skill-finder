@@ -109,7 +109,18 @@ reference files), Claude found the right skill about as often with plain `grep` 
   most). In a small Sonnet test on 16 made-up skills with long files (20 cases where the rule sat in a reference file of a
   skill about another topic), Claude followed the rule in 20 cases with these lines against 8 without them; with the
   reference files renamed `part-1.md` and so on, in 15 against 5. The file-and-line hits did that work: the list of names
-  led Claude to the file only when the names said what was inside. A lookup's output grows by about 6 to 20%. In a replay of 894 lookups recorded in four test tasks (no
+  led Claude to the file only when the names said what was inside. A lookup's output grows by about 6 to 20%.
+  On real skills the picture is narrower. With 151 public skills from 16 GitHub repositories installed, Sonnet got tasks
+  written to fit one reference file each, with either a lookup step in `CLAUDE.md` or a plain "open the skills that fit"
+  step. When `SKILL.md` names the file, both opened it equally often (16 of 16 each at a plan; 9 against 8 of 10 at a
+  review). When it does not, the lookup step opened it more often: 13 against 6 of 16 at a plan, and 11 against 7 of 16 at a
+  review, where the gap was under that test's own bar. Reference files that `SKILL.md` does not name are rare (29 of the 151
+  skills have one), and opening a file is not a better answer: Sonnet already writes much of what these files say, and
+  where only one side had read the file, a blind count of the file's points in the plan gave 23 against 14 of 25, with the
+  plan better to work from in three tasks of six and the same in three. The order of the eight names was added after those
+  runs, because a skill with 85 files rarely named the right one; a rerun of the 32 not-named tasks then reached 26 files
+  against 24, which is no loss and not a shown gain (the same tasks, a day apart). In all of these the tasks were written
+  to fit the files, one run each. In a replay of 894 lookups recorded in four test tasks (no
   model), the right skill was in the first ten for 213 of the 294 lookups that no `SKILL.md` matched, against 205 without it
   (first three: 126 against 113). All of the gain at ten came from one task, whose words sit in its reference files; the
   other three neither gained nor lost there.
