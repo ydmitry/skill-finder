@@ -28,7 +28,7 @@ test could not measure any harm from that.
 The finder is for the skills you cannot enable without first finding them: in a marketplace you added but never installed, in
 a team or public repo you cloned, or in a plugin you turned off.
 
-The `CLAUDE.md` block below (about 220 tokens in every session) has Claude look the skills up before a task's first edit. A
+The `CLAUDE.md` block below (about 290 tokens in every session) has Claude look the skills up before a task's first edit. A
 lookup lists at most 10 skills whose `SKILL.md` holds the phrase (and up to 5 that hold it only in reference files), each with
 its description and the line that matched: in my tests about 3,800 characters in the median, up to about 8,800. Claude can
 read most skills from their files without enabling them; whether it then follows one as well as an enabled skill is not
@@ -153,6 +153,7 @@ Before the first edit of a task, and again when the work turns to a new tool, fi
   python3 ~/.claude/skills/skill-finder/scripts/find_skills.py --phrase "<two or three words, in order>"
 It lists the skills whose SKILL.md contains the phrase, best first. Look up several phrases, each from a different angle: what the work is about; what the finished thing is called; how one goes about it; its shape. Leave proper nouns out.
 Open the best match's SKILL.md before writing anything, and follow it. Search again only if it does not fit. No match means proceed without a skill. Skip for one-line answers and when the task names its skills.
+The lookup is not one step. After you read a skill or a reference file, look up, the same way, every thing, area or kind of data it mentions that your earlier lookups did not cover. Do this before you write, and again after each new file you read. If a lookup lists nothing that fits, try other words.
 ```
 
 If your permission rules allow the finder by its command (for example
@@ -174,7 +175,11 @@ it: its plugin enabled, or a copy made with `--enable`, which runs `` !`command`
 not `${CLAUDE_PLUGIN_ROOT}`.
 
 The tested text said "No match, or a LOW CONFIDENCE one"; only the keyword search (`--task`) prints `LOW CONFIDENCE`, never
-`--phrase`, so that clause is left out here. The block costs about 220 tokens in every session. In a Haiku test on
+`--phrase`, so that clause is left out here. The block costs about 290 tokens in every session. Its last paragraph ("The
+lookup is not one step") was added after a test on a team's own skills among 897 public ones, where it raised the team's
+rules followed from 144 to 182 of 216 for 19% more cost a run ("Does it work?" has the test). It was tested under its own
+heading after a differently worded lookup step, the one of that test; in this block it is untested. Leave it out if your
+skills do not point to each other and the extra lookups are not worth it to you. In a Haiku test on
 unattended runs (such as `claude -p` with a task), a longer version of this text, not published here, got the skill opened in
 15 of 15 runs when added to the task and in 9 of 15 when left in `CLAUDE.md`; the block above has not been tried in a task. The block predates reference hits: when only a skill's reference file
 holds the phrase, the output names that skill and the file, which counts as a match. To see whether it works for
@@ -187,11 +192,11 @@ grep -rl --include='*.jsonl' '"name":"Bash".*find_skills\.py' "${CLAUDE_CONFIG_D
 and look at whether a skill it listed is invoked afterwards.
 
 **Optional: a second lookup mid-task.** The block already says to look again "when the work turns to a new tool, file type,
-service or document kind", but in tests Claude mostly looked up the request's words, and rarely a second need that showed only
+service or document kind", and after each skill or reference file for what that file mentions, but in tests Claude mostly looked up the request's words, and rarely a second need that showed only
 inside the files: a GPL-licensed file in a pull request under review, answers from under-16s in a survey, money stored as
 floats in a bug fix. The `Second lookups` section below, pasted into the same `CLAUDE.md` right under the block (the tested
 text and placement, word for word), asks for a lookup for each technology or kind of data the files show. Add it if your org
-keeps skills for such needs. It is about two and a half times as long as the block (roughly 500 tokens in every session), it
+keeps skills for such needs. It is nearly twice as long as the block (roughly 500 tokens in every session), it
 adds lookups, and in tests it did not reach a business change such as a cut to a pricing plan; the tests are under "Does it
 work?".
 
@@ -311,7 +316,12 @@ Sonnet. With no step in `CLAUDE.md`, Claude Code followed 32 rules at 151 skills
 48 runs. A step that tells it to look changed that: a plain "use the team's skills that fit" sentence gave 105 and 75, the
 lookup step 118 and 78, the lookup step plus "look again after each file you read" 126 and 101. A step against no step is the
 one difference these runs show. Between the plain sentence and the lookup step they show none (the team's skills had names
-that say what they hold, which is all a plain sentence needs), and "look again" leads only in counts, for 17 to 36% more cost.
+that say what they hold, which is all a plain sentence needs), and "look again" led only in counts, for 17 to 36% more cost. A confirming test of "look again" alone followed, with a
+rule fitted to a gap of that size and so chosen after seeing it: the same 24 tasks at 897 skills, three runs each, the
+lookup step against the same step plus the paragraph that now ends the block above. Rules followed: 144 against 182 of 216;
+look again was ahead in 18 tasks and behind in 3; cost a run 19% more. That passed the rule. The first rule of a task was
+found either way (61 against 63 of 72); the gain was the second skill (40 against 54) and the rules one skill points to in
+another (43 against 65). In 26 of 72 runs the lookup step alone looked a second time too.
 At 897 skills the first lookup, typed as about seven phrases in one command, listed the needed skill for fewer than half the
 needs: skills that hold many common phrases took the ten rows. Since then each phrase takes a row in turn. Replayed on the
 recorded first lookups, that lists the needed skill for 236 of 384 needs against 166, in output of the same size. In new runs
