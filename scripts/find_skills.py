@@ -722,10 +722,28 @@ def reference_hits(entries, pats, shown, held):
     out.sort(key=lambda h: h[0])
     return out
 
+def in_turns(hits, pats):
+    """Several phrases: each phrase takes a row in turn, in the order typed. A phrase's own list: the phrase in the name, then in
+    the description, then how often it occurs (five count), then the name. A skill is taken once; a phrase typed twice has one
+    turn. With "most phrases first" a skill that holds one telling phrase was pushed out by those that hold many common ones."""
+    lists, seen = [], set()
+    for ph, pt in pats:
+        if pt.pattern in seen: continue
+        seen.add(pt.pattern)
+        lists.append(sorted((h for h in hits if ph in h[4]), key=lambda h: (-h[4][ph][0], -h[4][ph][1], -min(h[4][ph][2], 5), h[1]["name"])))
+    if len(lists) < 2: return hits
+    out, taken, at = [], set(), [0] * len(lists)
+    while any(at[k] < len(lists[k]) for k in range(len(lists))):
+        for k, lst in enumerate(lists):
+            while at[k] < len(lst) and id(lst[at[k]][1]) in taken: at[k] += 1
+            if at[k] < len(lst):
+                taken.add(id(lst[at[k]][1])); out.append(lst[at[k]]); at[k] += 1
+    return out
+
 def phrase_search(entries, phrases, limit, as_json, toc=False):
     """`grep -il` over the whole SKILL.md of every skill, but ranked (so the shown ones do not depend on directory order) and
-    compact: a phrase in the name first, then in the description, then how often it occurs. Several phrases are alternatives; a
-    skill that holds more of them comes first. Under each shown skill: the phrases that only its reference files hold, with
+    compact: a phrase in the name first, then in the description, then how often it occurs. Several phrases are alternatives; each
+    takes a row in turn (in_turns). Under each shown skill: the phrases that only its reference files hold, with
     file:line (ROW_REF_PHRASES at most, then how many more), and its reference files (ROW_REF_FILES at most, see ranked_refs). Then up to REF_SHOWN
     skills that are not shown and hold a phrase only in their reference files, with file:line and the phrase: skills whose SKILL.md
     holds none, and hits beyond `limit`. With `toc` the hits print as sections (phrase in the name, the description, the body), one
@@ -751,6 +769,7 @@ def phrase_search(entries, phrases, limit, as_json, toc=False):
                     line = (at + 1, " ".join(text.splitlines()[at].split())[:140], ph)
         if found: hits.append(((-len(found), -in_name, -in_desc, -min(count, 5), e["name"]), e, found, line, detail))
     hits.sort(key=lambda h: h[0])
+    hits = in_turns(hits, pats)
     shown = hits[:limit]
     rows = [dict(name=e["name"], status=e["status"], source=e["source"], path=str(e["dir"] / "SKILL.md"), phrases=found,
                  description=" ".join(e["description"].split())[:110], match=f"{line[0]}: {line[1]}" if line else "", also=e["also"])
@@ -802,7 +821,8 @@ def phrase_search(entries, phrases, limit, as_json, toc=False):
             print("No skill holds any of these words either.")
         if unread: print(f"Not read: {unread} reference file(s) over {REF_BYTES_MAX // 1_000_000} MB or past the first {REF_FILES_MAX} of a skill.")
         return
-    print(how_many(len(hits), limit) + ". Best first: the phrase in the name, then in the description, then how often it occurs.\n")
+    print(how_many(len(hits), limit) + (". Each phrase in turn; for a phrase, best first:" if len({pt.pattern for _, pt in pats}) > 1 else ". Best first:")
+          + " the phrase in the name, then in the description, then how often it occurs.\n")
     for i, r in enumerate(rows, 1):
         print(f"{i}. {r['name']}  [{r['status']}]  {r['path']}")
         print(f"   {r['description']}")

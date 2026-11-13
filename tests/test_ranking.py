@@ -152,7 +152,7 @@ class PhraseSearch(unittest.TestCase):
             _, out = self.run_phrase("plan", folder=tmp)
             self.assertEqual([c["name"] for c in out["candidates"]], ["b"])
 
-    def test_name_beats_description_beats_body_and_more_phrases_beat_fewer(self):
+    def test_name_beats_description_beats_body_and_phrases_take_turns(self):
         with tempfile.TemporaryDirectory() as tmp:
             self.make(tmp, {
                 "body-only": "---\nname: body-only\ndescription: x\n---\nMentions the quartz gauge twice: quartz gauge.\n",
@@ -162,7 +162,7 @@ class PhraseSearch(unittest.TestCase):
             _, out = self.run_phrase("quartz gauge", folder=tmp)
             self.assertEqual([c["name"] for c in out["candidates"]], ["quartz-gauge", "in-desc", "body-only", "both"])
             _, out = self.run_phrase("quartz gauge", "brass valve", folder=tmp)
-            self.assertEqual(out["candidates"][0]["name"], "both")
+            self.assertEqual([c["name"] for c in out["candidates"]][:2], ["quartz-gauge", "both"])       # each phrase in turn
 
     def test_the_limit_cuts_the_list_and_says_how_many_matched(self):
         _, out = self.run_phrase("the", extra=("--limit", "2"))
