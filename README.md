@@ -222,7 +222,7 @@ Most tests measure whether Claude ran the finder and opened the skill, not wheth
 run with Claude Haiku and Sonnet (the subagent tests also with Opus), their harness is not published (several tests run on one machine's own config and skills,
 some of them private; the others on a local copy of 927 public skills that is not redistributed), and they are small: read
 them as directions, not rates. The model tests ran when a `--phrase` lookup listed up to 40 skills, except the subagent tests, which
-ran at today's default of 10. All the model tests except those of the `Second lookups` section and the subagent tests ran
+ran at today's default of 10. All the model tests except those of the `Second lookups` section, the subagent tests and the team-skills test ran
 before `--phrase` also read reference files. Two tests need no model: the
 reference-file replay above, which replays the unpublished runs' lookups, and the benchmark in the last paragraph of this
 section, whose scripts are published in `bench/skillret/`.
@@ -303,6 +303,24 @@ never in a deliverable, but Sonnet wrote it into the review file itself in 2 of 
 the runs were wide, so this shows no large harm, not no cost. Not tested: harm on Sonnet, and one-line questions or small
 edits with the section. The tasks, the second skills and the section were written for these tests by the same author, with
 model help; the section's table grew from one task's failed runs; and each comparison had 4 to 8 runs a task.
+
+**A team's own skills among many public ones.** Twelve skills written for the test as one team's house rules (each rule
+with an ID, some of them in reference files) sat among 151 and among 897 public skills. Each of 24 tasks, plans and reviews,
+needed three of the rules from two or three of the skills; the count is rules cited in the answer, 144 for each setup, on
+Sonnet. With no step in `CLAUDE.md`, Claude Code followed 32 rules at 151 skills and none at 897, where it called no skill in
+48 runs. A step that tells it to look changed that: a plain "use the team's skills that fit" sentence gave 105 and 75, the
+lookup step 118 and 78, the lookup step plus "look again after each file you read" 126 and 101. A step against no step is the
+one difference these runs show. Between the plain sentence and the lookup step they show none (the team's skills had names
+that say what they hold, which is all a plain sentence needs), and "look again" leads only in counts, for 17 to 36% more cost.
+At 897 skills the first lookup, typed as about seven phrases in one command, listed the needed skill for fewer than half the
+needs: skills that hold many common phrases took the ten rows. Since then each phrase takes a row in turn. Replayed on the
+recorded first lookups, that lists the needed skill for 236 of 384 needs against 166, in output of the same size. In new runs
+at 897 skills, rules followed went from 181 to 208 of 288, under the bar set before the runs, so not a shown gain; at 151
+skills it was 125 against 131 of 144, the size of the difference between two days of the same setup. Once a skill was listed,
+its rule was followed in about 96% of cases under either order. Showing more rows, more rows for each phrase, or more of the
+reference-file block added 1 to 21 needs of 384 for up to half again the output, and was not adopted. Of the 148 needs still
+not listed, no typed phrase matches the skill for 54, and for 33 the phrase is only in a reference file; those take other
+phrases or a second lookup, not another order. One invented team, one model, tasks written to fit these rules.
 
 **Skills the session already lists** gain little. Three skills the session lists by name alone, five Sonnet runs each, with
 and without the instruction: the model opened the right skill in all fifteen runs either way, because the names say what
