@@ -125,7 +125,11 @@ reference files), Claude found the right skill about as often with plain `grep` 
   (first three: 126 against 113). All of the gain at ten came from one task, whose words sit in its reference files; the
   other three neither gained nor lost there.
 - **No match.** It says how many skills hold each word (in `SKILL.md` or reference files) and usually lists the skills
-  nearest by words.
+  nearest by words. The same holds for one phrase of several: a phrase that no skill holds is named, with its word counts
+  and up to three skills nearest by its words (six a lookup), also when the other phrases matched. A skill counts as near
+  only when it holds two of the phrase's words or has the rarest one in its name or description. Before, such a phrase
+  got nothing unless the whole lookup matched nothing, and that was the largest single cause of a lookup missing the
+  skill in the benchmark runs under "Does it work?".
 
 `--task` is a keyword ranking instead (a word in the name counts most, then the description, then the body; rare words
 count more). It is the part the public benchmark below scores.
@@ -180,8 +184,9 @@ skills among 897 public ones, the earlier block followed 46 of 144 of the team's
 block made no lookup at all in 11 of 48 runs, this one in none. On 12 tasks that edit a file it showed no large loss and no
 gain (the rule's value applied for 24 of 72 needs against 23), and it looked nothing up for one-line questions (0 of 8 runs).
 The plan and review tasks are the ones the new wording was written from, and the earlier block's runs were made the evening
-before; "Does it work?" has the test and its limits. Not rerun with this block: the requests for skills that are not
-installed, Haiku and Opus, and the `Second lookups` section under it. The block costs about 330 tokens in every session. Its
+before; "Does it work?" has the test and its limits. Not rerun with this block: the ten requests for skills that are
+not installed (a public benchmark's tasks were run with it instead, see "Does it work?"), Haiku and Opus, and the `Second
+lookups` section under it. The block costs about 330 tokens in every session. Its
 last paragraph ("The lookup is not one step") can be left out if your skills do not point to each other and the extra
 lookups are not worth it to you; it was tested in a differently worded step (144 against 182 of 216 rules, 19% more cost a
 run) and in the earlier block (16 against 46 of 144). In a Haiku test on unattended runs (such as `claude -p` with a task),
@@ -247,6 +252,29 @@ request did not share. Ten skills, one model, the first turn only (nothing is wr
 not measured), and requests written by a model that had read each skill: a direction, not a rate. A later Sonnet rerun at
 today's default of 10 hits, counted more strictly (only skills opened before the reply reached 1,000 characters), opened an
 unseen skill in 14 of 20 runs and the exact one in 11 of 20.
+
+**The same question on a public benchmark's tasks.** The ten skills above were picked and their requests written for
+this test. Skill-Use-Bench ([arXiv 2608.04828](https://arxiv.org/abs/2608.04828)) has tasks and skills written by
+others: each task has input files and one skill it needs, an edited copy of a public skill. I took one task for each
+skill that fits an unattended run (the skill in English, no word of its name in the prompt or the inputs, inputs present
+and not an archive), put the skill among 889 public skills, and counted whether Sonnet opened it: its `SKILL.md` read,
+or 20 of its lines shown. One run a task; the benchmark's files are not redistributed here and the harness is not
+published.
+With the skills installed, so that their names are in Claude's skill list (58 tasks): no instruction opened the right
+skill in 8 tasks, the block above in 40, ahead in 32 tasks and behind in none. The 8 were skills whose name is nearly the
+task's own words. With the skills only on disk, where a lookup is the one way to them (53 tasks): the block opened the
+right skill in 30. The earlier block gave 36 of 58 and 28 of 53; no difference between the two blocks is shown here, in
+a test that could only see one of about 20 points. Of the 23 misses when not installed, 15 were lookups that did not
+list the skill, 7 listed it and did not open it, 1 made no lookup. In 8 of the 15 no typed phrase was in the skill, yet a
+lookup of one of the phrases alone would have named it among the nearest by words. The finder now prints those rows
+(see "No match" above). Replayed on the new runs' own lookups, that lists the right skill in 7 tasks where the old
+output did not and loses none; in new runs the block opened the right skill in 36 of 53 against 30 a day earlier, a gain
+this test does not show (10 tasks ahead, 4 behind): 6 of the 36 came only through the new rows, and no wrong skill was
+opened from them. On the 24 plan and review tasks of the team-skills test below, the rules followed went from 84 to 91
+of 144 with the change, inside a no-loss margin set before the runs. Limits: "opened" is often the first 60 to 150
+lines; asking for half the skill's text gives 26 opens for 30 and 29 for 36. Whether the skill was then followed is not
+measured: the benchmark's own file checks failed in 24 of 55 cases even with the skill handed over. One model, one run a
+task, and prompts written by the benchmark's authors with the skill in view.
 
 **Why the instruction is needed.** None of the `SKILL.md` descriptions tried, one of them saying "use at the start of EVERY
 task", got the skill called: 0 of 232 runs. The models call the skill whose topic matches the task (a chart skill for a chart) and never a skill whose
