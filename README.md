@@ -28,7 +28,7 @@ test could not measure any harm from that.
 The finder is for the skills you cannot enable without first finding them: in a marketplace you added but never installed, in
 a team or public repo you cloned, or in a plugin you turned off.
 
-The `CLAUDE.md` block below (about 290 tokens in every session) has Claude look the skills up before a task's first edit. A
+The `CLAUDE.md` block below (about 330 tokens in every session) has Claude look the skills up before it writes code, a plan or a review. A
 lookup lists at most 10 skills whose `SKILL.md` holds the phrase (and up to 5 that hold it only in reference files), each with
 its description and the line that matched: in my tests about 3,800 characters in the median, up to about 8,800. Claude can
 read most skills from their files without enabling them; whether it then follows one as well as an enabled skill is not
@@ -149,24 +149,23 @@ count more). It is the part the public benchmark below scores.
 
 ```
 ## Skills
-Before the first edit of a task, and again when the work turns to a new tool, file type, service or document kind, look the skills up by phrase:
-  python3 ~/.claude/skills/skill-finder/scripts/find_skills.py --phrase "<two or three words, in order>"
-It lists the skills whose SKILL.md contains the phrase, best first. Look up several phrases, each from a different angle: what the work is about; what the finished thing is called; how one goes about it; its shape. Leave proper nouns out.
-Open the best match's SKILL.md before writing anything, and follow it. Search again only if it does not fit. No match means proceed without a skill. Skip for one-line answers and when the task names its skills.
+Before you write code, a plan, a review or any other piece of work, look the skills up. First read the request and every file it names. List what appears in them: the things, activities, materials and technologies, and what the finished thing is called. Look all of them up in one plain command (no loop, no variable), one --phrase for each, two or three words in order:
+  python3 ~/.claude/skills/skill-finder/scripts/find_skills.py --phrase "<a name>" --phrase "<another name>"
+It lists the skills and the reference files that hold a phrase. Open every listed skill that fits and every listed reference file that fits, and read the reference files in a skill's folder that fit, before writing anything. Follow what they say. Nothing listed that fits means proceed without a skill. Skip for one-line answers and when the task names its skills.
 The lookup is not one step. After you read a skill or a reference file, look up, the same way, every thing, area or kind of data it mentions that your earlier lookups did not cover. Do this before you write, and again after each new file you read. If a lookup lists nothing that fits, try other words.
 ```
 
 If your permission rules allow the finder by its command (for example
 `Bash(python3 ~/.claude/skills/skill-finder/scripts/find_skills.py *)`), Claude Code checks each part of a chained command on
-its own, so plain finder calls, one phrase each, alone or chained with `;` or `&&`, pass. A shell loop does not, nor does a `cd`
+its own, so a plain finder call with several `--phrase`, alone or chained with `;` or `&&`, passes. A shell loop does not, nor does a `cd`
 outside your working folders: expect a prompt, or a refusal in unattended runs. In a test, Opus put its phrases in a loop in
-all 20 runs (14 of them as `cd /tmp && for p in ...; do ...; done`), and all 20 were refused. In the subagent variant below,
+all 20 runs (14 of them as `cd /tmp && for p in ...; do ...; done`), and all 20 were refused; that was the earlier block, which showed one phrase a command, and the block now asks for one plain command with no loop (untested on Opus). In the subagent variant below,
 the line "Run one phrase per command, with no cd and no loop" kept every Opus subagent to plain calls; the block with that line
 added is untested.
 
-**A skill it finds is trusted like one you installed.** The block has Claude follow the best match, also when it comes from
+**A skill it finds is trusted like one you installed.** The block has Claude follow every listed skill that fits, also when it comes from
 a marketplace or repo you never installed and may never have read, and a `SKILL.md` can tell Claude to run its scripts.
-The best match is picked by keywords, not by you: a phrase in a skill's name or description ranks it first, so any `SKILL.md`
+What is listed is picked by keywords, not by you: a phrase in a skill's name or description ranks it first, so any `SKILL.md`
 in a searched source can put common phrases there.
 Search only sources you would install from: the marketplaces you added are searched as they are, and `scripts/roots` holds
 the rest. A plain read does not run a skill's `` !`command` `` lines, fill in `${CLAUDE_SKILL_DIR}` or `${CLAUDE_PLUGIN_ROOT}`,
@@ -174,18 +173,20 @@ or apply its frontmatter (`allowed-tools`, `context: fork`, `hooks`, `model`); s
 it: its plugin enabled, or a copy made with `--enable`, which runs `` !`command` `` lines and fills `${CLAUDE_SKILL_DIR}` but
 not `${CLAUDE_PLUGIN_ROOT}`.
 
-The tested text said "No match, or a LOW CONFIDENCE one"; only the keyword search (`--task`) prints `LOW CONFIDENCE`, never
-`--phrase`, so that clause is left out here. The block costs about 290 tokens in every session. Its last paragraph ("The
-lookup is not one step") was added after a test on a team's own skills among 897 public ones, where it raised the team's
-rules followed from 144 to 182 of 216 for 19% more cost a run ("Does it work?" has the test). That was under its own
-heading after a differently worded lookup step, the one of that test. In this block, on the same plan and review tasks, it
-raised the rules followed from 16 to 46 of 144, mostly by getting a lookup made at all: without it the block made no lookup
-in 21 of 48 such runs (a plan or a review makes no edit), with it in 11. Whether looking again helps in this block is
-still untested, and the block follows far fewer of those rules than the test's step ("Does it work?" has the numbers). Leave
-the paragraph out if your skills do not point to each other and the extra lookups are not worth it to you. In a Haiku test on
-unattended runs (such as `claude -p` with a task), a longer version of this text, not published here, got the skill opened in
-15 of 15 runs when added to the task and in 9 of 15 when left in `CLAUDE.md`; the block above has not been tried in a task. The block predates reference hits: when only a skill's reference file
-holds the phrase, the output names that skill and the file, which counts as a match. To see whether it works for
+**This block replaced an earlier one on 2026-11-14.** The earlier block ("Before the first edit of a task ... look the
+skills up by phrase", one phrase a command, "open the best match"; its text is in this file's history) is the one every test
+under "Does it work?" ran with, except where a test names its own wording. On 24 plan and review tasks about a team's own
+skills among 897 public ones, the earlier block followed 46 of 144 of the team's rules and this one 84 of 144; the earlier
+block made no lookup at all in 11 of 48 runs, this one in none. On 12 tasks that edit a file it showed no large loss and no
+gain (the rule's value applied for 24 of 72 needs against 23), and it looked nothing up for one-line questions (0 of 8 runs).
+The plan and review tasks are the ones the new wording was written from, and the earlier block's runs were made the evening
+before; "Does it work?" has the test and its limits. Not rerun with this block: the requests for skills that are not
+installed, Haiku and Opus, and the `Second lookups` section under it. The block costs about 330 tokens in every session. Its
+last paragraph ("The lookup is not one step") can be left out if your skills do not point to each other and the extra
+lookups are not worth it to you; it was tested in a differently worded step (144 against 182 of 216 rules, 19% more cost a
+run) and in the earlier block (16 against 46 of 144). In a Haiku test on unattended runs (such as `claude -p` with a task),
+a longer version of the earlier text, not published here, got the skill opened in 15 of 15 runs when added to the task and
+in 9 of 15 when left in `CLAUDE.md`; this block has not been tried in a task. To see whether it works for
 you, count the transcripts in which Claude ran the finder:
 
 ```
@@ -194,12 +195,12 @@ grep -rl --include='*.jsonl' '"name":"Bash".*find_skills\.py' "${CLAUDE_CONFIG_D
 
 and look at whether a skill it listed is invoked afterwards.
 
-**Optional: a second lookup mid-task.** The block already says to look again "when the work turns to a new tool, file type,
-service or document kind", and after each skill or reference file for what that file mentions, but in tests Claude mostly looked up the request's words, and rarely a second need that showed only
+**Optional: a second lookup mid-task.** The block already says to look again after each skill or reference file for what
+that file mentions, but in tests of the earlier block Claude mostly looked up the request's words, and rarely a second need that showed only
 inside the files: a GPL-licensed file in a pull request under review, answers from under-16s in a survey, money stored as
 floats in a bug fix. The `Second lookups` section below, pasted into the same `CLAUDE.md` right under the block (the tested
 text and placement, word for word), asks for a lookup for each technology or kind of data the files show. Add it if your org
-keeps skills for such needs. It is nearly twice as long as the block (roughly 500 tokens in every session), it
+keeps skills for such needs. It is about one and a half times as long as the block (roughly 500 tokens in every session), it was tested under the earlier block only, it
 adds lookups, and in tests it did not reach a business change such as a cut to a pricing plan; the tests are under "Does it
 work?".
 
@@ -223,7 +224,8 @@ Teams keep their rules for a technology or a kind of data in a skill. Work that 
 
 ## Does it work?
 
-In short: it helps Claude find and open skills it could not otherwise see, and adds little for skills Claude already lists,
+The tests in this section ran with the earlier block (see the note under the block), except the last part of the
+team-skills paragraph. In short: it helps Claude find and open skills it could not otherwise see, and adds little for skills Claude already lists,
 except a second skill whose need shows only in the files (the optional `Second lookups` section).
 Most tests measure whether Claude ran the finder and opened the skill, not whether the work came out better; the tests of the
 `Second lookups` section check whether a skill's rules reached Claude before a check on the output asked for them. They were
@@ -334,8 +336,22 @@ step with the same last paragraph followed 84%; without its last paragraph, 16 o
 before a skill is listed: the block's runs typed about 2 phrases a run against 13, made no lookup at all in 11 of 48 runs
 (21 of 48 without the last paragraph), and 15 of the 27 runs that did look without it typed only "code review" or
 "step-by-step plan", the kind of document, which is what the block's "what the finished thing is called" asks for. Once a
-needed skill was listed, the block's runs followed it about as often as the step's. So on plans and reviews the block as
-published is much weaker than the numbers of this paragraph; it was written for tasks that edit, and these make no edit.
+needed skill was listed, the block's runs followed it about as often as the step's. That block was written for tasks that
+edit, and these make no edit.
+**The block reworded.** The block above borrows the step's wording: read the files first, list what is in them, look it all
+up in one command, open every listed skill and reference file that fits. One wording was tried, with rules fixed before the
+runs. On the same 24 tasks (two runs each) it followed 84 of 144 rules against the earlier block's 46, ahead in 14 tasks and
+behind in 2, with a lookup in every run; plans 52 against 25 of 72, reviews 32 against 21. It cost $0.20 a run against
+$0.15. On the 12 review files given as tasks that edit ("fix what is wrong in this file"), both blocks looked skills up
+before the first edit in 23 of 24 runs, and the rule's value was applied for 24 of 72 needs against the earlier block's 23: no large loss by a rule that
+allowed 6 needs, and no gain. Neither looked anything up for four one-line questions (0 of 8 runs each). It is still below
+the test's own step (84 against 119 of 144 on the same two repeats). Nearly all of that gap is needed skills never listed:
+its runs type about half as many phrases, mostly two words long where the step's runs often type one; 9 of 24 review runs
+looked up before reading the file, typing "code review"; and 7 review runs stopped after a first lookup that listed no team
+skill. Limits: the wording was written after reading these tasks' runs, so this is not a test on new tasks; the earlier
+block's plan and review runs were made the evening before, not side by side; its answers cite nearly twice as many rule IDs
+(each one read by hand sat on a step that used the rule); and "no loop" in the block matches what this test's permission
+rules allow, where the earlier block lost a few runs to refused loops.
 At 897 skills the first lookup, typed as about seven phrases in one command, listed the needed skill for fewer than half the
 needs: skills that hold many common phrases took the ten rows. Since then each phrase takes a row in turn. Replayed on the
 recorded first lookups, that lists the needed skill for 236 of 384 needs against 166, in output of the same size. In new runs
