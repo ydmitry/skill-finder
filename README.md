@@ -177,9 +177,12 @@ not `${CLAUDE_PLUGIN_ROOT}`.
 The tested text said "No match, or a LOW CONFIDENCE one"; only the keyword search (`--task`) prints `LOW CONFIDENCE`, never
 `--phrase`, so that clause is left out here. The block costs about 290 tokens in every session. Its last paragraph ("The
 lookup is not one step") was added after a test on a team's own skills among 897 public ones, where it raised the team's
-rules followed from 144 to 182 of 216 for 19% more cost a run ("Does it work?" has the test). It was tested under its own
-heading after a differently worded lookup step, the one of that test; in this block it is untested. Leave it out if your
-skills do not point to each other and the extra lookups are not worth it to you. In a Haiku test on
+rules followed from 144 to 182 of 216 for 19% more cost a run ("Does it work?" has the test). That was under its own
+heading after a differently worded lookup step, the one of that test. In this block, on the same plan and review tasks, it
+raised the rules followed from 16 to 46 of 144, mostly by getting a lookup made at all: without it the block made no lookup
+in 21 of 48 such runs (a plan or a review makes no edit), with it in 11. Whether looking again helps in this block is
+still untested, and the block follows far fewer of those rules than the test's step ("Does it work?" has the numbers). Leave
+the paragraph out if your skills do not point to each other and the extra lookups are not worth it to you. In a Haiku test on
 unattended runs (such as `claude -p` with a task), a longer version of this text, not published here, got the skill opened in
 15 of 15 runs when added to the task and in 9 of 15 when left in `CLAUDE.md`; the block above has not been tried in a task. The block predates reference hits: when only a skill's reference file
 holds the phrase, the output names that skill and the file, which counts as a match. To see whether it works for
@@ -322,6 +325,17 @@ lookup step against the same step plus the paragraph that now ends the block abo
 look again was ahead in 18 tasks and behind in 3; cost a run 19% more. That passed the rule. The first rule of a task was
 found either way (61 against 63 of 72); the gain was the second skill (40 against 54) and the rules one skill points to in
 another (43 against 65). In 26 of 72 runs the lookup step alone looked a second time too.
+**The lookup step in these runs is not the block above.** It is the test's own wording, written for plans and reviews:
+"Before you write a plan or a review. First read the request and every file it names. List the things, activities, materials
+and technologies that appear in them. Look all of them up in one plain command, one --phrase for each. Open every listed
+reference file that fits; open every listed skill that fits, and read the reference files in its folder that fit." The block
+above, put on the same 24 tasks at 897 skills the same evening (two runs each), followed 46 of 144 rules, 32%, where that
+step with the same last paragraph followed 84%; without its last paragraph, 16 of 144 against the step's 67%. The loss is
+before a skill is listed: the block's runs typed about 2 phrases a run against 13, made no lookup at all in 11 of 48 runs
+(21 of 48 without the last paragraph), and 15 of the 27 runs that did look without it typed only "code review" or
+"step-by-step plan", the kind of document, which is what the block's "what the finished thing is called" asks for. Once a
+needed skill was listed, the block's runs followed it about as often as the step's. So on plans and reviews the block as
+published is much weaker than the numbers of this paragraph; it was written for tasks that edit, and these make no edit.
 At 897 skills the first lookup, typed as about seven phrases in one command, listed the needed skill for fewer than half the
 needs: skills that hold many common phrases took the ten rows. Since then each phrase takes a row in turn. Replayed on the
 recorded first lookups, that lists the needed skill for 236 of 384 needs against 166, in output of the same size. In new runs
