@@ -38,10 +38,11 @@ def test_every_unmatched_phrase_is_named_and_the_rows_are_capped(tmp_path):
     block = out[out.index("No skill contains"):out.index("Best match:")]
     for ph in ("blog post outline", "zebra crossings quota", "tenants quota report", "of the"): assert f'No skill contains "{ph}"' in block
     rows = [ln.split()[1] for ln in block.splitlines() if ln.startswith("- ")]
-    assert len(rows) == 6 and len(set(rows)) == 6 and "web-forms" not in rows
+    assert len(set(rows)) == len(rows) and "web-forms" not in rows            # no skill twice, none that is listed above
     d = json.loads(run(w, ["error handling", "blog post outline", "zebra crossings quota", "tenants quota report", "of the"], "--json"))
     assert [u["phrase"] for u in d["unmatched"]] == ["blog post outline", "zebra crossings quota", "tenants quota report", "of the"]
     assert [len(u["nearest"]) for u in d["unmatched"]] == [3, 3, 0, 0] and d["unmatched"][3]["word_counts"] == {}
+    assert len(rows) == 6 + len(d["nearest_whole"]) and len(d["nearest_whole"]) <= 2            # the caps: six nearest by a phrase, two by the whole lookup
 
 def test_a_nearest_skill_already_listed_is_named_not_replaced(tmp_path):
     out = run(world(tmp_path), ["error handling", "web forms builder"])
