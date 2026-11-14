@@ -28,7 +28,7 @@ test could not measure any harm from that.
 The finder is for the skills you cannot enable without first finding them: in a marketplace you added but never installed, in
 a team or public repo you cloned, or in a plugin you turned off.
 
-The `CLAUDE.md` block below (about 330 tokens in every session) has Claude look the skills up before it writes code, a plan or a review. A
+The `CLAUDE.md` block below (about 345 tokens in every session) has Claude look the skills up before it writes code, a plan or a review. A
 lookup lists at most 10 skills whose `SKILL.md` holds the phrase (and up to 5 that hold it only in reference files), each with
 its description and the line that matched: in my tests about 3,800 characters in the median, up to about 8,800. Claude can
 read most skills from their files without enabling them; whether it then follows one as well as an enabled skill is not
@@ -130,6 +130,17 @@ reference files), Claude found the right skill about as often with plain `grep` 
   only when it holds two of the phrase's words or has the rarest one in its name or description. Before, such a phrase
   got nothing unless the whole lookup matched nothing, and that was the largest single cause of a lookup missing the
   skill in the benchmark runs under "Does it work?".
+- **Near the whole lookup.** With several phrases, up to two skills that hold no typed phrase but rank in the first
+  three by the words of the whole lookup are listed after the rows, when near by the same rule. A row shows up to 200
+  characters of the description (110 before, which often cut off the part that says when to use the skill). On the
+  lookups that earlier model runs typed, replayed on both versions: the needed skill listed in 3 more benchmark runs of
+  155 and 3 more times on a team's tasks, none lost, the best match the same in all 328 lookups, about 19% more
+  characters a lookup. Not shown with the model: this version was not run with it. A wider version was (53 benchmark
+  tasks, one run each: the needed skill opened in 40 against 37, not a shown difference); read run by run, one task was
+  gained through these rows and one plausibly lost through a part since dropped. Tried in that wider version and
+  dropped: moving the first row and the best match to the listed skill the whole lookup's words rank highest (it fired
+  in 12 lookups and named the right skill in 4), and retrying a long unmatched phrase by its two-word parts (it never
+  listed a needed skill).
 
 `--task` is a keyword ranking instead (a word in the name counts most, then the description, then the body; rare words
 count more). It is the part the public benchmark below scores.
@@ -153,9 +164,9 @@ count more). It is the part the public benchmark below scores.
 
 ```
 ## Skills
-Before you write code, a plan, a review or any other piece of work, look the skills up. First read the request and every file it names. List what appears in them: the things, activities, materials and technologies, and what the finished thing is called. Look all of them up in one plain command (no loop, no variable), one --phrase for each, two or three words in order:
+Before you write code, a plan, a review or any other piece of work, look the skills up. First read the request and every file it names. List what appears in them: the things, activities, materials and technologies, and what the finished thing is called. Look all of them up in one plain command (no loop, no variable), one --phrase for each, two or three words in order. Run it as a command of its own, not joined to other commands:
   python3 ~/.claude/skills/skill-finder/scripts/find_skills.py --phrase "<a name>" --phrase "<another name>"
-It lists the skills and the reference files that hold a phrase. Open every listed skill that fits and every listed reference file that fits, and read the reference files in a skill's folder that fit, before writing anything. Follow what they say. Nothing listed that fits means proceed without a skill. Skip for one-line answers and when the task names its skills.
+It lists the skills and the reference files that hold a phrase. Read every listed skill that fits to the end, and every listed reference file that fits, and the reference files in a skill's folder that fit, before writing anything. Follow what they say. Nothing listed that fits means proceed without a skill. Skip for one-line answers and when the task names its skills.
 The lookup is not one step. After you read a skill or a reference file, look up, the same way, every thing, area or kind of data it mentions that your earlier lookups did not cover. Do this before you write, and again after each new file you read. If a lookup lists nothing that fits, try other words.
 ```
 
@@ -186,7 +197,7 @@ gain (the rule's value applied for 24 of 72 needs against 23), and it looked not
 The plan and review tasks are the ones the new wording was written from, and the earlier block's runs were made the evening
 before; "Does it work?" has the test and its limits. Not rerun with this block: the ten requests for skills that are
 not installed (a public benchmark's tasks were run with it instead, see "Does it work?"), Haiku and Opus, and the `Second
-lookups` section under it. The block costs about 330 tokens in every session. Its
+lookups` section under it. The block costs about 345 tokens in every session. Its
 last paragraph ("The lookup is not one step") can be left out if your skills do not point to each other and the extra
 lookups are not worth it to you; it was tested in a differently worded step (144 against 182 of 216 rules, 19% more cost a
 run) and in the earlier block (16 against 46 of 144). In a Haiku test on unattended runs (such as `claude -p` with a task),
@@ -366,6 +377,22 @@ before a skill is listed: the block's runs typed about 2 phrases a run against 1
 "step-by-step plan", the kind of document, which is what the block's "what the finished thing is called" asks for. Once a
 needed skill was listed, the block's runs followed it about as often as the step's. That block was written for tasks that
 edit, and these make no edit.
+**Two sentences of the block changed on 2026-11-14.** "Run it as a command of its own, not joined to other commands" was
+added, and "Open every listed skill that fits" became "Read every listed skill that fits to the end". Without the first
+sentence Claude mostly put the lookup in one command with other things (a `cd`, a `cat` of the task's files, a `| head`),
+and a harness that refuses part of such a command refuses the lookup with it. On 27 of the public benchmark's tasks
+below, skills not installed, one run each, with the rule fixed before the runs: a lookup joined to other commands in 25
+tasks without the sentence and in 0 with it; the needed skill opened in 20 and 18 tasks (the rule allowed 3 fewer; 38
+and 36 over this round and an earlier one on the same tasks); opens that showed at least half of the skill 14 and 17.
+On the 24 plan and review tasks it followed 99 of 144 rules (the block before the change 84 with the earlier finder and
+91 with this one), reviews 46 against 32. What this does not show: the measure was chosen after the earlier round on
+the same tasks had shown the difference, so this is a repeat, not a new finding. The cost of a joined lookup was small
+in these runs: every refusal was for the command joined to the lookup, 4 of the 5 refused tasks retried and opened the
+skill, and with the sentence Claude ran the same file reads as a call of its own, so no calls were saved. Two runs
+with the sentence made no lookup at all, none without it, and skills other than the needed one were opened in 7 runs
+against 4. The runs used a short command name in place of the `python3` path above. The two sentences were not tested
+apart.
+
 **The block reworded.** The block above borrows the step's wording: read the files first, list what is in them, look it all
 up in one command, open every listed skill and reference file that fits. One wording was tried, with rules fixed before the
 runs. On the same 24 tasks (two runs each) it followed 84 of 144 rules against the earlier block's 46, ahead in 14 tasks and
