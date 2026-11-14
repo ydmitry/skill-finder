@@ -17,7 +17,7 @@ def slow_score(e, pats, idf):
 def test_scores_and_word_counts_equal_the_plain_pattern_reading():
     entries = fs.collect([], only=[str(ROOT / "tests" / "fixtures" / "skills")])
     assert entries, "the fixtures were not read"
-    terms = fs.terms_of("draft release notes for the latest test run and a database migration plan with docker images and api tokens")
+    terms = fs.terms_of("draft release notes for the latest test run and a database migration plan with docker images and api tokens c++ node.js c# gpt-4.1 test_ plan.")
     fs.prepare(entries)
     pats = {t: fs.pattern(t) for t in terms}
     df_slow = {t: sum(1 for e in entries if p.search(e["_main"]) or p.search(e["name"].lower())) for t, p in pats.items()}

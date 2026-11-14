@@ -3,7 +3,7 @@
 ## Rework the best-match idea
 
 State: after every `--phrase` search that finds something, the finder prints a best-match block (why it matched, description, first
-~20 lines of SKILL.md, reference files, "Read <path>, then follow it"). The block has no off switch. A `--for "<one sentence>"` option
+~20 lines of SKILL.md, reference files, "Read <path> to the end, then follow it"). The block has no off switch. A `--for "<one sentence>"` option
 that added one Haiku call's fit reason or NONE was removed on 2026-11-07, so that the script calls no model and starts no process.
 
 What the experiments showed (15 runs each, Haiku, tasks with a failing gate; the experiments are not in this repository): the block

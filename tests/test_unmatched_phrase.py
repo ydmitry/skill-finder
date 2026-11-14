@@ -30,12 +30,45 @@ def test_a_phrase_no_skill_holds_gets_its_nearest_skills_listed(tmp_path):
     assert first.startswith("- moltbook-validator  [") and first.endswith("/moltbook-validator/SKILL.md")
     assert out.index('No skill contains "Moltbook post"') < out.index("Best match:")
 
-def test_at_most_three_nearest_a_phrase_and_none_already_shown(tmp_path):
-    out = run(world(tmp_path), ["error handling", "blog post outline", "web form builder"])
+def test_every_unmatched_phrase_is_named_and_the_rows_are_capped(tmp_path):
+    w = world(tmp_path)
+    for n in range(4): skill(w, f"zebra-{n}", "Zebra crossing rules.", "zebra crossing.\n")
+    for n in range(4): skill(w, f"quota-{n}", "Quota handling for tenants.", "quota tenants.\n")
+    out = run(w, ["error handling", "blog post outline", "zebra crossings quota", "tenants quota report", "of the"])
+    block = out[out.index("No skill contains"):out.index("Best match:")]
+    for ph in ("blog post outline", "zebra crossings quota", "tenants quota report", "of the"): assert f'No skill contains "{ph}"' in block
+    rows = [ln.split()[1] for ln in block.splitlines() if ln.startswith("- ")]
+    assert len(rows) == 6 and len(set(rows)) == 6 and "web-forms" not in rows
+    d = json.loads(run(w, ["error handling", "blog post outline", "zebra crossings quota", "tenants quota report", "of the"], "--json"))
+    assert [u["phrase"] for u in d["unmatched"]] == ["blog post outline", "zebra crossings quota", "tenants quota report", "of the"]
+    assert [len(u["nearest"]) for u in d["unmatched"]] == [3, 3, 0, 0] and d["unmatched"][3]["word_counts"] == {}
+
+def test_a_nearest_skill_already_listed_is_named_not_replaced(tmp_path):
+    out = run(world(tmp_path), ["error handling", "web forms builder"])
+    line = [ln for ln in out.splitlines() if ln.startswith('No skill contains "web forms builder"')][0]
+    assert "listed above: web-forms" in line and "builder 0" in line
+    assert not [ln for ln in out[out.index("No skill contains"):out.index("Best match:")].splitlines() if ln.startswith("- ")]
+
+def test_a_skill_that_shares_one_common_word_is_not_near(tmp_path):
+    w = world(tmp_path)
+    out = run(w, ["error handling", "moltbook post outline"])
     block = out[out.index("No skill contains"):out.index("Best match:")]
     rows = [ln.split()[1] for ln in block.splitlines() if ln.startswith("- ")]
-    assert 1 <= len(rows) <= 6 and "web-forms" not in rows and len(set(rows)) == len(rows)
-    assert sum(r.startswith("post-") for r in rows) <= 3
+    assert rows == ["moltbook-validator"]              # the post-* skills hold only "post"; none has the rarest word, none holds two
+    out = run(w, ["error handling", "xyzzy post"])
+    assert 'No skill contains "xyzzy post" (skills holding each word: xyzzy 0, post 6).' in out or 'No skill contains "xyzzy post" (skills holding each word: xyzzy 0, post 5).' in out
+
+def test_same_phrase_twice_and_a_reference_file_in_upper_case(tmp_path):
+    w = world(tmp_path)
+    (w / "ledger" / "references").mkdir()
+    (w / "ledger" / "references" / "Close.md").write_text("Month End Close steps\n")
+    out = run(w, ["error handling", "Blog Post Outline", "blog-post outline", "MONTH END close"])
+    assert out.count("No skill contains") == 1 and 'No skill contains "Blog Post Outline"' in out
+
+def test_toc_and_no_hit_paths_have_no_unmatched_key(tmp_path):
+    w = world(tmp_path)
+    assert "unmatched" not in json.loads(run(w, ["Moltbook post"], "--json")) and "unmatched" not in json.loads(run(w, ["error handling", "Moltbook post"], "--json", "--toc"))
+    assert json.loads(run(w, ["error handling", "ledger entry"], "--json"))["unmatched"] == []
 
 def test_no_block_when_every_phrase_matches_and_one_phrase_alone_is_unchanged(tmp_path):
     w = world(tmp_path)
@@ -46,7 +79,7 @@ def test_no_block_when_every_phrase_matches_and_one_phrase_alone_is_unchanged(tm
 def test_json_names_the_unmatched_phrases_and_their_nearest(tmp_path):
     d = json.loads(run(world(tmp_path), ["error handling", "Moltbook post"], "--json"))
     assert [u["phrase"] for u in d["unmatched"]] == ["Moltbook post"] and d["unmatched"][0]["nearest"][0]["name"] == "moltbook-validator"
-    assert "unmatched" not in json.loads(run(tmp_path, ["error handling"], "--json")) or json.loads(run(tmp_path, ["error handling"], "--json"))["unmatched"] == []
+    assert d["unmatched"][0]["word_counts"]["moltbook"] == 1 and d["unmatched"][0]["shown_above"] == []
 
 def test_a_phrase_held_only_in_a_reference_file_is_not_unmatched(tmp_path):
     w = world(tmp_path)
