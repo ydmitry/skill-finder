@@ -311,15 +311,20 @@ def prepare(entries):
         e["_refs"] = [(f, read_small(f, REF_BYTES_MAX).lower()) for f in refs[:REF_FILES_MAX]]
         e["_refs_unread"] = max(0, len(refs) - REF_FILES_MAX) + sum(1 for f, txt in e["_refs"] if not txt and f.stat().st_size > REF_BYTES_MAX)
 
+def has(t, p, text):
+    """The word-start pattern, tried only where the word is in the text at all: on a long task a ranking is hundreds of thousands
+    of pattern searches, nearly all of them over text that does not hold the word."""
+    return t in text and bool(p.search(text))
+
 def document_frequency(entries, pats):
-    return {t: sum(1 for e in entries if p.search(e["_main"]) or p.search(e["name"].lower())) for t, p in pats.items()}
+    return {t: sum(1 for e in entries if has(t, p, e["_main"]) or has(t, p, e["name"].lower())) for t, p in pats.items()}
 
 def score(e, pats, idf):
     """Name and description decide; body and references add a little, so a long skill cannot win on volume."""
     name, desc, total = e["name"].lower(), e["description"].lower(), 0.0
     for t, p in pats.items():
-        part = 5 * bool(p.search(name)) + 3 * bool(p.search(desc)) + 1.5 * min(len(p.findall(e["_main"])), 5) / 5
-        part += min(sum(1 for f, txt in e["_refs"] if p.search(txt)), 5) / 5 + 1.0 * any(p.search(f.name.lower()) for f, _ in e["_refs"])
+        part = 5 * has(t, p, name) + 3 * has(t, p, desc) + 1.5 * min(len(p.findall(e["_main"])) if t in e["_main"] else 0, 5) / 5
+        part += min(sum(1 for f, txt in e["_refs"] if has(t, p, txt)), 5) / 5 + 1.0 * any(has(t, p, f.name.lower()) for f, _ in e["_refs"])
         total += idf[t] * part
     return total
 
@@ -587,7 +592,7 @@ def print_best(b):
         print("First lines of SKILL.md:"); [print(("  " + ln) if ln else "") for ln in b["lines"]]
     if b["references"]:
         print("References: " + names_line(b.get("references_distinct", b["references"]), len(b["references"]), ROW_REF_FILES))
-    print(f'Read {b["path"]}, then follow it; search again only if it does not fit.')
+    print(f'Read {b["path"]} to the end, then follow it; search again only if it does not fit.')
 
 def phrase_sections(shown):
     """The shown hits by where the phrase sits: in the name, else in the description, else in the body (ranking order kept inside each)."""
@@ -630,6 +635,8 @@ def print_phrase_toc(entries, hits, sections, counts, nearest, limit):
           if hits or nearest else "Search other words, or --toc for the whole table.")
 
 REF_SHOWN = 5        # skills shown that hold a phrase only in their reference files
+NEAR_PHRASE = 3      # a phrase that no skill holds, typed beside phrases that did match: this many skills nearest by its words,
+NEAR_ALL = 6         # ... and this many over all such phrases of one lookup
 ROW_REF_PHRASES = 3  # a listed skill names at most this many phrases that only its reference files hold, then how many more
 ROW_REF_FILES = 8    # ... and at most this many of its reference files, as the best match does
 
@@ -740,6 +747,21 @@ def in_turns(hits, pats):
                 taken.add(id(lst[at[k]][1])); out.append(lst[at[k]]); at[k] += 1
     return out
 
+def unmatched_phrases(entries, pats, hits, shown_paths):
+    """The typed phrases that no skill holds (not in a SKILL.md, a name or a reference file), each with the skills nearest by its
+    words that the lookup does not already show: NEAR_PHRASE a phrase, NEAR_ALL in all. A lookup of such a phrase alone ends with
+    this list; typed beside phrases that match, it used to end with nothing, and the skill it was typed for stayed unseen."""
+    held, out, taken, seen = {ph for h in hits for ph in h[2]}, [], set(shown_paths), set()
+    for ph, pt in pats:
+        if ph in held or pt.pattern in seen: continue
+        seen.add(pt.pattern)
+        if any(pt.search(txt) for e in entries for _, txt in e["_refs"]): continue
+        _, near = near_misses(entries, [ph], extra=len(taken))
+        rows = [r for r in near if r["path"] not in taken][:min(NEAR_PHRASE, NEAR_ALL - sum(len(u["nearest"]) for u in out))]
+        taken |= {r["path"] for r in rows}
+        if rows: out.append(dict(phrase=ph, nearest=rows))
+    return out
+
 def phrase_search(entries, phrases, limit, as_json, toc=False):
     """`grep -il` over the whole SKILL.md of every skill, but ranked (so the shown ones do not depend on directory order) and
     compact: a phrase in the name first, then in the description, then how often it occurs. Several phrases are alternatives; each
@@ -789,6 +811,7 @@ def phrase_search(entries, phrases, limit, as_json, toc=False):
                   for t, p in ((t, pattern(t)) for t in counts)}
     nearest = near[:CLOSEST]
     shown_near = [r for r in near if r["path"] not in {x["path"] for x in ref_rows}][:CLOSEST]      # a skill shown above is not listed twice
+    unmatched = unmatched_phrases(entries, pats, hits, {r["path"] for r in rows + ref_rows}) if hits and not toc else []
     best = best_match(hits) if hits and not toc else None
     if best: best.update(references=reference_files(hits[0][1], pats), references_distinct=distinct_refs(hits[0][1], pats))    # the first row's files, in its order
     sections = phrase_sections(shown) if toc else None
@@ -796,7 +819,7 @@ def phrase_search(entries, phrases, limit, as_json, toc=False):
         out = dict(phrases=phrases, scanned=len(entries), matched=len(hits), shown=len(rows), candidates=rows)
         if not toc: out.update(reference_matched=len(refs), reference_hits=ref_rows, reference_files_unread=unread)
         if not hits: out.update(word_counts=counts, nearest=nearest)
-        elif not toc: out.update(best=best)
+        elif not toc: out.update(best=best, unmatched=unmatched)
         if toc: out.update(sections={k: [h[1]["name"] for h in v] for k, v in sections.items()})
         print(json.dumps(out, indent=1)); return
     quoted = " | ".join(f'"{ph}"' for ph in phrases)
@@ -835,6 +858,9 @@ def phrase_search(entries, phrases, limit, as_json, toc=False):
     if ref_rows:
         print(f"\nOnly in reference files ({len(refs)} skill(s) not listed above hold there a phrase their SKILL.md does not{more}):")
         print_reference_rows(ref_rows, ref_said)
+    for u in unmatched:
+        print(f'\nNo skill contains "{u["phrase"]}". Nearest by words, not by phrase; open one only if its description fits:')
+        for r in u["nearest"]: print(f"- {r['name']}  [{r['status']}]  {r['path']}\n   {r['description']}")
     print_best(best)
 
 def print_reference_rows(rows, said):

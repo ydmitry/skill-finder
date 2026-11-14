@@ -61,7 +61,7 @@ First lines of SKILL.md:
   # release-notes
 
   Group by change type.
-Read tests/fixtures/skills/release-notes/SKILL.md, then follow it; search again only if it does not fit.
+Read tests/fixtures/skills/release-notes/SKILL.md to the end, then follow it; search again only if it does not fit.
 ```
 
 That is the repo's test fixtures. On your machine each hit shows its state, such as `user skill`, `project skill`, `plugin

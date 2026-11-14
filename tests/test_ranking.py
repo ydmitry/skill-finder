@@ -853,7 +853,7 @@ class BestMatch(unittest.TestCase):
         self.assertNotIn("line 19", text)                                   # twenty lines of the body
         self.assertIn("References: references/r0.md", text)
         self.assertIn("(+2 more)", text)
-        self.assertTrue(text.rstrip().endswith(f"Read {self.skills / 'alpha' / 'SKILL.md'}, then follow it; search again only if it does not fit."))
+        self.assertTrue(text.rstrip().endswith(f"Read {self.skills / 'alpha' / 'SKILL.md'} to the end, then follow it; search again only if it does not fit."))
         self.assertNotIn("Fit", text)
 
     def test_a_body_only_hit_says_where_it_is_not(self):
