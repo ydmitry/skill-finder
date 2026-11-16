@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Does Claude find the right skill? What my evals showed</title>
+<meta name="description" content="What evals showed about helping Claude Code find the right skill among hundreds, and what did not matter.">
+<style>
+:root{--bg:#ffffff;--text:#161920;--dim:#5f6675;--line:#e2e5ec;--accent:#2f5fd0;--soft:#f4f6fa;--code:#f1f3f8}
+@media (prefers-color-scheme:dark){:root{--bg:#0e1116;--text:#f2f4f8;--dim:#9aa2b1;--line:#262b36;--accent:#7aa2f0;--soft:#161a22;--code:#171b24}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:17px/1.65 ui-sans-serif,"Avenir Next","Segoe UI",system-ui,sans-serif}
+main{max-width:44rem;margin:0 auto;padding:40px 16px 72px;overflow-wrap:anywhere}
+h1{font-size:2.1rem;line-height:1.15;margin:0 0 1.1rem;letter-spacing:-.01em}
+h1::before{content:"skill-finder · evals";display:block;font-size:.8rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-bottom:.6rem}
+h1+p{font-size:1.14rem;line-height:1.6}
+img{display:block;width:100%;max-width:520px;height:auto;margin:1.4rem 0}
+h2{font-size:1.25rem;line-height:1.3;margin:2.4rem 0 .6rem;padding-top:.4rem;border-top:1px solid var(--line)}
+p,li{margin:.7rem 0}
+ul{padding-left:1.3rem}
+a{color:var(--accent)}
+table{border-collapse:collapse;width:100%;margin:1.1rem 0;font-size:.95rem;display:block;overflow-x:auto}
+th,td{border-bottom:1px solid var(--line);padding:.5rem .7rem;text-align:left;vertical-align:top}
+th{background:var(--soft);font-weight:600}
+td:not(:first-child),th:not(:first-child){white-space:nowrap}
+code{font:.88em ui-monospace,"SF Mono",Menlo,monospace;background:var(--code);padding:.1em .3em;border-radius:4px}
+pre{position:relative;background:var(--code);padding:38px 16px 14px;border-radius:8px;border-left:4px solid var(--accent);overflow-x:auto;font-size:.82rem;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
+.copy{position:absolute;top:8px;right:8px;font:600 .75rem ui-sans-serif,system-ui,sans-serif;color:var(--accent);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:4px 9px;cursor:pointer}
+.copy:hover{border-color:var(--accent)}
+pre code{background:none;padding:0}
+footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);color:var(--dim);font-size:.9rem}
+</style>
+</head>
+<body>
+<main>
+<h1 id="does-claude-find-the-right-skill-what-my-evals-showed">Does
+Claude find the right skill? What my evals showed</h1>
+<p>Claude Code rarely opens the skill a task needs unless it is told to
+look: in my tests, 2 of 58 tasks on Haiku and 8 on Sonnet. A short
+instruction in <code>CLAUDE.md</code> to look the skills up first
+changes that: 47 and 40 of 58. The search tool I built was not shown to
+add much beyond the instruction: on Haiku, a plain <code>grep</code> in
+the same instruction was not shown to do worse. All of this comes from
+test tasks, not from real work. <a
+href="#the-instruction-to-put-in-claudemd">Jump to the
+instruction.</a></p>
+<p><img src="figures/flow.svg"
+alt="On Haiku with no instruction Claude works from the session&#39;s skill list, which is mostly names, and opened the needed skill in 2 of 58 tasks. With the instruction in CLAUDE.md it ran a lookup step in 54 of 58 runs and opened the needed skill in 47 of 58 tasks." /></p>
+<h2 id="the-instruction-to-put-in-claudemd">The instruction to put in
+<code>CLAUDE.md</code></h2>
+<p>This is the whole recipe. It needs the finder script: clone <a
+href="https://github.com/ydmitry/skill-finder">github.com/ydmitry/skill-finder</a>
+to <code>~/.claude/skills/skill-finder</code>, or change the path. Which
+wording each test ran is noted beside its result.</p>
+<pre><code>## Skills
+Before you write code, a plan, a review or any other piece of work, look the skills up. First read the request and every file it names. List what appears in them: the things, activities, materials and technologies, and what the finished thing is called. Look all of them up in one plain command (no loop, no variable), one --phrase for each, two or three words in order. Run it as a command of its own, not joined to other commands:
+  python3 ~/.claude/skills/skill-finder/scripts/find_skills.py --phrase &quot;&lt;a name&gt;&quot; --phrase &quot;&lt;another name&gt;&quot;
+It lists the skills and the reference files that hold a phrase. Read every listed skill that fits to the end, and every listed reference file that fits, and the reference files in a skill&#39;s folder that fit, before writing anything. Follow what they say. Nothing listed that fits means proceed without a skill. Skip for one-line answers and when the task names its skills.
+The lookup is not one step. After you read a skill or a reference file, look up, the same way, every thing, area or kind of data it mentions that your earlier lookups did not cover. Do this before you write, and again after each new file you read. If a lookup lists nothing that fits, try other words.</code></pre>
+<p>Without the finder, use a grep over your skill folders instead of the
+python command:</p>
+<pre><code>grep -Ril --include=SKILL.md -e &quot;&lt;a name&gt;&quot; -e &quot;&lt;another name&gt;&quot; ~/.claude/skills</code></pre>
+<p>Search <code>SKILL.md</code> files only: one phrase can match
+hundreds of other files. I did not run this exact form with a model.</p>
+<h2 id="what-i-tested">What I tested</h2>
+<p>"Skill finder" is my script that searches skill files by phrase. The
+question: given hundreds of skills, does Claude open the right one, and
+is the finder what makes it do so?</p>
+<p>I used two suites. The first is the local-rules suite. I wrote twelve
+skills for an imaginary engineering team: API conventions, database
+migrations, background jobs and so on. Each skill holds local rules with
+an ID: rules that exist only in this team. One example, API-14: partner
+endpoints live under <code>/px/&lt;partner&gt;/&lt;event&gt;</code>, and
+the request stores the raw body and answers 204. Claude cannot know that
+rule without reading the skill.</p>
+<p>I hid the twelve among 897 public skills. In 24 tasks Claude writes a
+plan or reviews a file, and each task touches three rules, one from each
+of three skills. Each task ran twice, so there are 24 x 3 x 2 = 144
+chances to follow a rule. A rule counts as followed when its ID appears
+in the answer.</p>
+<p>The second suite is a selection of tasks from Skill-Use-Bench (arXiv
+2608.04828), lightly changed (asset folder renamed, environment note
+shortened). Each task has a skill the authors say it needs. In 58 tasks
+the skill is in the session's skill list. In 53 it is only on disk,
+reachable only by searching. These are not the benchmark's official
+scores, and none of its tasks or skills are republished here.</p>
+<p>"Opened" means the skill's text reached Claude. Each comparison had a
+pass rule written before its runs: a difference counts only at 10 to 20
+percentage points (15 for the Haiku tests) and a sign test, which asks
+whether one setup beat the other in more tasks than chance allows, with
+p of 0.05 or less. "Not shown" means the rule was not met, not that two
+setups are equal.</p>
+<h2 id="the-instruction-does-the-work">The instruction does the
+work</h2>
+<p>Without any instruction Claude almost never found the skill. With it,
+Claude did, on both models.</p>
+<p><img src="figures/opened.svg"
+alt="On Haiku the instruction raised the needed skill opened from 2 to 47 of 58 tasks when installed, and from no route to 44 of 53 when not installed, and local rules followed from 0 to 76 of 144." /></p>
+<p>On Haiku, the needed skill was opened in 2 of 58 tasks without the
+instruction and 47 with it. For skills that are not installed, no
+instruction means no route to them, so that case has no measurement.</p>
+<p>On Sonnet, the same kind of instruction opened the needed skill in 40
+of 58 tasks, against 8 with none (an earlier wording of the block).</p>
+<p>On the local-rules suite at 897 skills, Sonnet followed none of the
+rules with no instruction and 75 of 144 with a plain sentence: "use the
+team's skills that fit". A lookup step scored 78, and 101 with a
+look-again paragraph. At 151 skills the same test gave 32 of 144 with no
+instruction and 105 with the plain sentence, so the gap is not specific
+to 900 skills.</p>
+<p><img src="figures/sonnet.svg"
+alt="On Sonnet with 897 skills, local rules followed went from 0 of 144 with no instruction to 75 with a plain sentence, 78 with a lookup step and 101 with look-again; the gaps among the three instructions were not shown in this test." /></p>
+<p>Look-again led only in counts there. A later test of it alone, with a
+rule fitted after seeing the gap, found 182 against 144 of 216 rules,
+ahead in 18 tasks and behind in 3.</p>
+<h2 id="the-work-changes-too-a-little">The work changes too, a
+little</h2>
+<p>The benchmark ships file checks for 21 of the tasks: patterns the
+finished files must match. On Sonnet, 48% of the checks passed with no
+instruction and 78% with it. On Haiku it went from 51% to 63% (counts
+only).</p>
+<p>This is the thinnest result here: 21 tasks, one run each. A run can
+match a pattern without using the skill, since no instruction already
+passes 48%.</p>
+<h2 id="the-finder-against-a-plain-grep">The finder against a plain
+grep</h2>
+<p>I ran the same instruction with <code>grep -ril</code> over the skill
+folders in place of the finder, on Haiku.</p>
+<p><img src="figures/finder-vs-grep.svg"
+alt="On Haiku the same instruction with a plain grep scored within 2 to 3 points of the finder on local rules and installed skills, and 13 points lower on not-installed skills, a gap that did not meet the 15-point rule." /></p>
+<p>None of the gaps met the rule. The one place the finder may matter is
+skills that are not installed: 13 percentage points, finder ahead in 9
+tasks and grep in 2 (p = 0.065).</p>
+<p>Installing the finder as a skill, without the instruction, did
+nothing: Haiku never called it in 159 runs. I did not run the grep on
+Sonnet.</p>
+<h2 id="what-tuning-did-not-do">What tuning did not do</h2>
+<p>I changed the instruction's wording and the finder's ranking several
+times. Neither opened more skills.</p>
+<ul>
+<li>Telling Claude to run the lookup as a command of its own removed
+lookups joined to other commands (25 of 27 tasks to 0). The reworded
+instruction opened the needed skill in 18 tasks, the old one in 20.</li>
+<li>Ranking changes looked better when I replayed old lookups. With the
+model, the needed skill was opened in 40 of 53 tasks against 37, not a
+shown difference. I kept two small parts: skills near the whole lookup
+are listed after the rows, and a row shows more of its description.</li>
+</ul>
+<p>Of 23 tasks where some run missed the skill, in 7 the skill was on
+the list and Claude did not open it, and in 13 the lookup never listed
+it.</p>
+<h2 id="what-this-does-not-show">What this does not show</h2>
+<ul>
+<li>Real use. In my own sessions in the nine days after I added the
+instruction, the finder ran in 6 of 26 (and in 2 of those a listed skill
+was then read). Test tasks are each built around one skill; real tasks
+often need none.</li>
+<li>Tasks I could not keep apart from the tuning. I read the local-rules
+tasks and the 53 tasks while I changed the instruction and the
+finder.</li>
+<li>Benchmark prompts written with the skill in view. The 8
+no-instruction opens on Sonnet are skills whose names are nearly the
+task's own words.</li>
+<li>A fair grep. I ran it once, in a first wording, over a clean folder,
+inside an instruction tuned with the finder, and I added it after I had
+read the first four Haiku setups.</li>
+<li>Repeatable differences. Two runs of the same setup differ by a few
+tasks (up to 5 in mine), so gaps under about 8 tasks cannot be seen. A
+second reader did not recount the Haiku rounds.</li>
+<li>Whether "followed" is more than "cited". On the local-rules suite a
+rule counts as followed when its ID appears in the answer.</li>
+</ul>
+<p>The takeaway: the instruction to look up is the part that works. On
+Haiku the finder was not shown to beat a grep; on Sonnet I did not run
+the grep.</p>
+<footer>Part of <a href="https://github.com/ydmitry/skill-finder">skill-finder</a>. Source: <a href="article.md">article.md</a>.</footer>
+</main>
+<script>
+document.querySelectorAll("pre").forEach(function(pre){
+  if(!navigator.clipboard)return;
+  var b=document.createElement("button");b.className="copy";b.type="button";b.textContent="Copy";
+  b.addEventListener("click",function(){navigator.clipboard.writeText(pre.innerText.replace(/\s*Copy$/,"")).then(function(){b.textContent="Copied";setTimeout(function(){b.textContent="Copy"},1500)})});
+  pre.appendChild(b);
+});
+</script>
+</body>
+</html>
