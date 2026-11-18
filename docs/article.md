@@ -69,6 +69,8 @@ Before each comparison I wrote down a pass rule. Here it was a gap of 15 percent
 
 Each benchmark task ran once and each local-rules task twice, and two runs of the same setup differed by 2 to 5 tasks, so small gaps mean little. An answer can also cite a rule's ID without applying the rule.
 
+The test harness and the run records are not published: they hold copies of other people's skills and of the benchmark's tasks.
+
 ## The instruction does the work
 
 With no instruction Claude almost never found the skill. With the instruction it found most of them. That met the pass rule on both suites, for each of the three models.
