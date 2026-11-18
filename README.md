@@ -2,6 +2,8 @@
 
 **Maybe someone in your org already wrote a skill for this.**
 
+**Write-up of the tests, with figures: [Attempts to improve skill discovery in Claude Code](https://ydmitry.github.io/skill-finder/).**
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/situation-dark.png">
   <img src="docs/images/situation.png" alt="A developer asks Claude Code to write release notes. A teammate already wrote a release-notes skill, but it sits in a team repo that was never installed, so Claude can't see it. With skill-finder, Claude looks it up, finds the team's skill and reads it before writing.">
@@ -20,6 +22,11 @@ only change to your setup is the `CLAUDE.md` lines you add.
 [Attempts to improve skill discovery in Claude Code](https://ydmitry.github.io/skill-finder/)** That page covers installed skills and a team's
 own rules, where the `CLAUDE.md` block does the work and a plain `grep` did about as well as the finder. It leaves out
 skills that are not installed; those results are in this README (see "Why not just grep?" and "Does it work?").
+
+<p align="center">
+  <a href="https://ydmitry.github.io/skill-finder/"><img src="docs/figures/flow.svg" width="400" alt="On Haiku the needed skill was read in 2 of 58 tasks with no instruction and in 47 of 58 with one paragraph in CLAUDE.md."></a>
+  <a href="https://ydmitry.github.io/skill-finder/"><img src="docs/figures/opened.svg" width="400" alt="With the instruction the needed skill was opened in 47 of 58 tasks on Haiku, 40 of 58 on Sonnet and 9 of 10 on Opus, against 2, 7 and 1 without it; team rules followed went from 0 to 76 of 144, 98 of 144 and 24 of 30."></a>
+</p>
 
 What the tests show: with the `CLAUDE.md` block, Sonnet runs the finder and opens skills it could not otherwise see (one in 44
 of 50 runs, against none in 30 runs without the block; ten requests, the first turn only); Haiku, on the same requests, mostly
@@ -156,6 +163,15 @@ What the finder adds is around the match:
 `--task` is a keyword ranking instead (a word in the name counts most, then the description, then the body; rare words
 count more). It is the part the public benchmark below scores.
 
+Two earlier tests (20 made-up skills, an older wording of the block) show where a search by words reaches and a description
+does not: a rule kept in a reference file, and a rule kept in a skill whose name and description are about something else.
+"Plain" is no instruction, "told" is an instruction to check the skills with no command. Grep was not run in these tests.
+
+<p align="center">
+  <a href="https://ydmitry.github.io/skill-finder/"><img src="docs/figures/refs.svg" width="400" alt="On Sonnet a rule in a reference file that SKILL.md does not mention was followed in 0 of 18 cases with no instruction, 4 of 18 when told to check the skills and 18 of 18 with the finder."></a>
+  <a href="https://ydmitry.github.io/skill-finder/"><img src="docs/figures/unnamed.svg" width="400" alt="A rule in a skill whose name and description are about another topic was followed in 0 of 16 cases with no instruction, 0 of 16 when told and 16 of 16 with the finder on Sonnet."></a>
+</p>
+
 ## Set up
 
 1. **Install the skill.** `git clone https://github.com/ydmitry/skill-finder ~/.claude/skills/skill-finder` (or copy the
@@ -248,6 +264,14 @@ Before you write findings or code, write one line: "Technologies and kinds of da
 Red flags, stop and look up: you are about to write about a file type, technology or kind of data that no skill you opened mentions; you are rerunning the first lookup's phrases; a check failed and you are only rewording.
 Teams keep their rules for a technology or a kind of data in a skill. Work that skips them comes back incomplete, every time.
 ```
+
+Two results on skills needed mid-task, from the write-up: a second lookup after reading a skill, and what the wording of a
+skill's description changes when there is no instruction at all.
+
+<p align="center">
+  <a href="https://ydmitry.github.io/skill-finder/"><img src="docs/figures/chain.svg" width="400" alt="With the block and the finder among 897 skills, Claude looked up again after reading a skill in 42 of 48 runs on Haiku, 31 of 48 on Sonnet and 9 of 10 on Opus, and followed the rule only the first skill points to in 21 of 48, 35 of 48 and 8 of 10, against 0 with no instruction."></a>
+  <a href="https://ydmitry.github.io/skill-finder/"><img src="docs/figures/always.svg" width="400" alt="With no instruction, Sonnet used a skill needed mid-task in 14 of 15 runs when its description said Use ALWAYS, 7 of 15 with Use when, and 3 of 13 with a neutral description."></a>
+</p>
 
 ## Does it work?
 
