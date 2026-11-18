@@ -16,6 +16,11 @@ matched. Claude can then read the one that fits, or
 you can copy it into a folder you start a fresh session in. It never edits `settings.json`; beyond the folder you clone, the
 only change to your setup is the `CLAUDE.md` lines you add.
 
+**The latest tests, on Haiku, Sonnet and Opus, are written up with figures in
+[Does Claude find the right skill?](https://ydmitry.github.io/skill-finder/)** That page covers installed skills and a team's
+own rules, where the `CLAUDE.md` block does the work and a plain `grep` did about as well as the finder. It leaves out
+skills that are not installed; those results are in this README (see "Why not just grep?" and "Does it work?").
+
 What the tests show: with the `CLAUDE.md` block, Sonnet runs the finder and opens skills it could not otherwise see (one in 44
 of 50 runs, against none in 30 runs without the block; ten requests, the first turn only); Haiku, on the same requests, mostly
 answered without running it. What they do not show: that the finished work is better. In my own sessions in the nine days after
@@ -91,7 +96,13 @@ another project's `.claude/settings.local.json`, where the `/skills` menu saves 
 
 `--phrase` is close to a `grep -ril` over every `SKILL.md`, cut to the best 10 (`--limit 40` for more), plus up to five skills that hold the phrase only in their
 reference files. In a small Haiku test (four tasks over one folder of 927 public skills, run before the finder read
-reference files), Claude found the right skill about as often with plain `grep` over `SKILL.md` files. What the finder adds is around the match:
+reference files), Claude found the right skill about as often with plain `grep` over `SKILL.md` files. In the later three-model tests, with `grep -ril` over a folder holding only the test's skills in place of the finder, the two were level where the
+skill is installed or its name says what it holds: on Sonnet 94 against 98 of 144 team rules followed and 41 against 40 of
+58 skills opened, on Haiku 74 against 76 and 45 against 47. For skills that are not installed the finder was ahead: on Sonnet
+it opened the needed skill in 36 of 53 tasks and grep in 26 (ahead in 12 tasks, behind in 2, which met the pass rule set
+before the runs), on Haiku 44 against 37 (just short of the rule). One run a task, grep in a first wording.
+
+What the finder adds is around the match:
 
 - **Where to look.** It knows where Claude Code keeps skills: user and project folders and every plugin's skills in each
   config dir, including disabled plugins and the marketplace folders of plugins you never installed, plus the folders in
