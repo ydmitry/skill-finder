@@ -36,10 +36,14 @@ footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);color:v
 <main>
 <h1 id="does-claude-find-the-right-skill-what-my-evals-showed">Does
 Claude find the right skill? What my evals showed</h1>
-<p>Claude Code rarely reads the skill a task needs unless it is told to
-look. In my tests it opened the needed skill in 2 of 58 tasks on Haiku
-and 7 of 58 on Sonnet. One paragraph in <code>CLAUDE.md</code> changed
-that to 47 and 40. A ten-task sample on Opus went the same way.</p>
+<p>By Dmytro Yaremenko</p>
+<p>A skill in Claude Code is a folder with a <code>SKILL.md</code> file
+of instructions for one kind of task. Claude Code rarely reads the skill
+a task needs unless it is told to look. In my tests it opened the needed
+skill in 2 of 58 tasks on Haiku and 7 of 58 on Sonnet. One paragraph in
+<code>CLAUDE.md</code>, the file of standing instructions Claude Code
+reads in every session, changed that to 47 and 40. A ten-task sample on
+Opus went the same way.</p>
 <p>The paragraph tells Claude to search its skills first, with my script
 skill-finder ("the finder") or with a plain <code>grep</code>. Both did
 about equally well. These are test tasks, not real work. <a
@@ -54,9 +58,9 @@ descriptions, and rarely opens the right one. I tested with 897 skills,
 not with a few dozen.</li>
 <li>When a team keeps its conventions in skills, Claude cannot follow a
 rule it has not read.</li>
-<li>When a task needs a second skill you could not name at the start: a
-review opens a file, and the file touches something that has its own
-rules.</li>
+<li>When a task needs a second skill that nobody could name at the
+start. For example, a review opens a file, and the file touches
+something that has its own rules.</li>
 </ul>
 <h2 id="the-instruction-to-put-in-claudemd">The instruction to put in
 <code>CLAUDE.md</code></h2>
@@ -85,67 +89,67 @@ The lookup is not one step. After you read a skill or a reference file, look up,
 </details>
 
 <h2 id="what-i-tested">What I tested</h2>
-<p>Two suites, on Haiku, Sonnet and Opus: the small, the mid-size and
-the largest Claude model.</p>
-<p>The first is local rules: twelve skills written for the test, for an
-imaginary team, hidden among 897 public skills. Each skill holds made-up
-rules with an ID, which Claude cannot guess. For example, rule API-14
-says the URL of an endpoint for a partner must start with
-<code>/px/</code>. Each of 24 tasks, a plan or a review, needs three
-rules from three skills. Each task ran twice, which gives 144 chances to
-follow a rule. A rule counts as followed when its ID appears in the
-answer.</p>
+<p>I used two suites and three Claude models: Haiku (small), Sonnet
+(mid-size) and Opus (the largest).</p>
+<p>The first suite is about local rules. It has twelve skills written
+for the test, for an imaginary team, hidden among 897 public skills.
+Each skill holds made-up rules with an ID, which Claude cannot guess.
+For example, rule API-14 says the URL of an endpoint for a partner must
+start with <code>/px/</code>. Each of 24 tasks, a plan or a review,
+needs three rules from three skills. Each task ran twice, which gives
+144 chances to follow a rule. A rule counts as followed when its ID
+appears in the answer.</p>
 <p><img src="figures/haystack.svg"
 alt="The local-rules suite: 12 skills holding local rules are hidden among 897 public skills, and each task needs rules from 3 of the 12." /></p>
-<p>The second is 58 tasks from Skill-Use-Bench (arXiv 2608.04828), each
-with a skill its authors say it needs. "Opened" means the skill's text
-reached Claude. These are not the benchmark's official scores.</p>
+<p>The second suite is 58 tasks from Skill-Use-Bench (arXiv 2608.04828),
+each with a skill its authors say it needs. "Opened" means the skill's
+text reached Claude. These are not the benchmark's official scores.</p>
 <p>Haiku and Sonnet ran everything. Opus ran ten tasks from each suite,
 because it costs more.</p>
-<p>I wrote a pass rule before each comparison: here, a gap of 15
-percentage points, with one setup ahead in clearly more tasks than the
-other. "Not shown" below means the rule was not met.</p>
+<p>Before each comparison I wrote down a pass rule. Here it was a gap of
+15 percentage points, with one setup ahead in clearly more tasks than
+the other. "Not shown" below means the rule was not met.</p>
 <h2 id="the-instruction-does-the-work">The instruction does the
 work</h2>
-<p>Without it Claude almost never found the skill. With it, Claude found
-most of them, on all three models. That met the pass rule on both
-suites, for each model.</p>
+<p>With no instruction Claude almost never found the skill. With the
+instruction it found most of them. That met the pass rule on both
+suites, for each of the three models.</p>
 <p><img src="figures/opened.svg"
 alt="With the instruction, the needed skill was opened in 47 of 58 tasks on Haiku, 40 of 58 on Sonnet and 9 of 10 on Opus, against 2, 7 and 1 without it; local rules followed went from 0 to 76 of 144, 98 of 144 and 24 of 30." /></p>
-<p>Does the work itself get better? A little, on thin evidence. 21
-benchmark tasks ship checks on the finished files. The average task
-passed 63% of them on Haiku (51% without the instruction) and 64% on
-Sonnet (49% without).</p>
-<h3 id="does-it-need-a-lookup-command">Does it need a lookup
-command?</h3>
-<p>I tested that earlier, on Sonnet and the local rules, with older
-wordings of the instruction. Those are separate runs, so do not compare
-them with the numbers above.</p>
+<p>The finished work improved a little, though the evidence is thin. 21
+of the benchmark tasks come with checks on the finished files, and each
+ran once. The average task passed 63% of them on Haiku (51% without the
+instruction) and 64% on Sonnet (49% without).</p>
+<h3 id="without-a-lookup-command">Without a lookup command</h3>
+<p>Earlier, on Sonnet and the local rules, I tested older wordings of
+the instruction, one of them with no lookup command. Those are separate
+runs, so do not compare them with the numbers above.</p>
 <p><img src="figures/sonnet.svg"
 alt="On Sonnet with 897 skills, local rules followed went from 0 of 144 with no instruction to 75 when told to check the skills with no command, 78 with a lookup step and 101 with look-again; the gaps among the three instructions were not shown in this test." /></p>
-<p>Just telling Claude to check its skills, with no command, already
-scored 75 of 144. A lookup step scored 78, and 101 with look-again. None
-of the gaps among the three met that test's pass rule, which was 30
-points.</p>
+<p>Telling Claude to check its skills, with no command, scored 75 of
+144. A lookup step scored 78, and 101 with look-again. None of the gaps
+among the three met that test's pass rule, which was 30 points.</p>
 <p>A later test of look-again alone gave 182 rules followed with it and
-144 without, of 216 (three runs a task). I count that as likely, not
-settled: I wrote its pass rule after I had seen earlier results.</p>
+144 without, of 216 (three runs a task). I wrote that test's pass rule
+after I had seen earlier results, so I treat the gain as likely and not
+as settled.</p>
 <h2 id="skills-needed-mid-task">Skills needed mid-task</h2>
 <p>One of each local-rules task's three rules is "chained". The only
 pointer to its skill is a sentence inside the first skill Claude reads,
 so Claude has to look up again in the middle of the task.</p>
 <p><img src="figures/chain.svg"
 alt="With the instruction and the finder at 897 skills, Claude looked up again after reading a skill in 42 of 48 runs on Haiku, 31 of 48 on Sonnet and 9 of 10 on Opus, and followed the chained rule in 21 of 48, 35 of 48 and 8 of 10, against 0 with no instruction." /></p>
-<p>Without the instruction Claude followed no chained rule: it never
+<p>With no instruction Claude followed no chained rule, because it never
 opened the first skill. With it, Claude followed the chained rule in 21
 of 48 runs on Haiku, 35 of 48 on Sonnet and 8 of 10 on Opus.</p>
-<p>Looking again is not the same as finding. Haiku looked up again most
-often and followed the fewest chained rules. And every run had
-look-again, so this does not show that the look-again paragraph is the
-cause.</p>
-<p>What does plain Claude Code do once a skill is installed and the need
-shows up mid-task? In a separate small test with eight skills, it
-depended on the skill's description:</p>
+<p>A second lookup does not always find the skill. Haiku looked up again
+most often and followed the fewest chained rules. Every run also had the
+look-again paragraph, so this does not show that the look-again
+paragraph is the cause.</p>
+<p>I also ran a separate small test of Claude Code with no instruction
+and no finder. The skill was installed among 20 skills, and the need for
+it showed up only during the work. Whether Claude used it depended on
+the skill's description:</p>
 <table>
 <thead>
 <tr>
@@ -167,8 +171,9 @@ depended on the skill's description:</p>
 </tr>
 </tbody>
 </table>
-<p>With 200 skills in the list, Haiku used the skill in 1 of 24
-runs.</p>
+<p>With 200 skills in the list and the first description, Haiku used the
+skill in 1 of 24 runs, against 8 of 24 for the same tasks with 20
+skills.</p>
 <h2 id="finder-or-grep">Finder or grep</h2>
 <p>I ran the same instruction with <code>grep</code> in place of the
 finder.</p>
@@ -182,7 +187,7 @@ their names say what they hold.</p>
 also lists the other files in a skill's folder. These tests do not show
 it opening more skills than grep.</p>
 <p>Installing the finder as a skill, without the instruction, did
-nothing: Haiku never called it.</p>
+nothing. Haiku never called it.</p>
 <h2 id="what-to-do">What to do</h2>
 <p>Add the instruction. If you would rather install nothing, use the
 grep version.</p>
