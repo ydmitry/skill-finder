@@ -109,5 +109,3 @@ Installing the finder as a skill, without the instruction, did nothing. Haiku ne
 ## What to do
 
 Add the instruction. If you would rather install nothing, use the grep version.
-
-Written by [Dmytro Yaremenko](https://github.com/ydmitry).
