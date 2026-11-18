@@ -17,7 +17,7 @@ you can copy it into a folder you start a fresh session in. It never edits `sett
 only change to your setup is the `CLAUDE.md` lines you add.
 
 **The latest tests, on Haiku, Sonnet and Opus, are written up with figures in
-[Does Claude find the right skill?](https://ydmitry.github.io/skill-finder/)** That page covers installed skills and a team's
+[Attempts to improve skill discovery in Claude Code](https://ydmitry.github.io/skill-finder/)** That page covers installed skills and a team's
 own rules, where the `CLAUDE.md` block does the work and a plain `grep` did about as well as the finder. It leaves out
 skills that are not installed; those results are in this README (see "Why not just grep?" and "Does it work?").
 

@@ -1,4 +1,4 @@
-# Does Claude find the right skill? What evals showed
+# Attempts to improve skill discovery in Claude Code
 
 When using skills in Claude Code, I was concerned about the following things:
 
