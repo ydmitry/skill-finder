@@ -1,5 +1,15 @@
 # Does Claude find the right skill? What my evals showed
 
+When using skills in Claude Code, I was concerned about the following things:
+
+- Mostly I needed to explicitly say which skill to use.
+- If in the middle of a session some skill appears to be useful, will it be auto-invoked?
+- If I need a specific reference, will it be added to the context?
+- Is the description enough for the LLM to decide if a skill needs to be used?
+- Also, what about skills with a badly written description, or skills too broad to describe with only one description?
+
+So that's why I decided to write a skill which helps with finding the needed skills: skill-finder. It appeared that the secret is in the `CLAUDE.md` instruction, and skill-finder itself can be replaced with grep.
+
 A skill in Claude Code is a folder with a `SKILL.md` file of instructions for one kind of task. Claude Code rarely reads the skill a task needs unless it is told to look. In my tests it opened the needed skill in 2 of 58 tasks on Haiku and 7 of 58 on Sonnet. One paragraph in `CLAUDE.md`, the file of standing instructions Claude Code reads in every session, changed that to 47 and 40. A ten-task sample on Opus went the same way.
 
 The paragraph tells Claude to search its skills first, with my script skill-finder ("the finder") or with a plain `grep`. Both did about equally well. These are test tasks, not real work. [Jump to the instruction.](#the-instruction-to-put-in-claudemd)
