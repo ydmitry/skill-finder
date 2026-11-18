@@ -105,6 +105,27 @@ With 151 public skills in place of 897, the same test gave 32 of 144 with no ins
 
 Look-again was higher, but not by that test's 30-point rule. A later test of it alone (Sonnet, 897 skills, 24 tasks x 3 rules x 3 runs = 216) found 182 of 216 rules followed with it and 144 without it, ahead in 18 tasks and behind in 3. That met its rule. But I wrote the rule after seeing three earlier gaps on the same 24 tasks, so I count the gain as likely, not settled.
 
+## Skills needed mid-task
+
+Some skills turn out to be needed only after Claude has started reading. The local-rules suite has this built in. One of each task's three rules is "chained": nothing in the task points to its skill. The only pointer is a sentence inside the first skill Claude reads. To follow that rule, Claude has to look up again in the middle of the task.
+
+![With the instruction and the finder at 897 skills, Claude looked up again after reading a skill in 42 of 48 runs on Haiku, 31 of 48 on Sonnet and 9 of 10 on Opus, and followed the chained rule in 21 of 48, 35 of 48 and 8 of 10.](figures/chain.svg)
+
+These counts come from the same three-model runs as the table above (instruction with the finder, 897 skills):
+
+| | Haiku | Sonnet | Opus (10 tasks) |
+|---|---|---|---|
+| Runs with another lookup after reading a skill | 42 of 48 | 31 of 48 | 9 of 10 |
+| Chained rule followed | 21 of 48 | 35 of 48 | 8 of 10 |
+| For comparison: the task's main rule followed | 37 of 48 | 37 of 48 | 8 of 10 |
+
+With no instruction no chained rule was followed. With grep in place of the finder, the chained rule was followed in 20, 29 and 7.
+
+Two cautions:
+
+- Looking again is not the same as finding. Haiku looked up again most often and followed the fewest chained rules.
+- Every one of these runs had the look-again paragraph. So they show that Claude does look up again and often reaches the second skill, not that the paragraph is the cause. The only with-and-without comparison is the Sonnet test above (182 against 144 of 216 rules). I set no pass rule for the counts in this section.
+
 ## The work changes too, a little
 
 The benchmark ships file checks for 21 of the 58 installed-skill tasks: patterns the finished files must match. With the instruction, the average task passed 63% of its checks on Haiku (51% without) and 64% on Sonnet (49% without). An earlier Sonnet run with an earlier wording gave 78% against 48%. I set no pass rule for the current numbers.
