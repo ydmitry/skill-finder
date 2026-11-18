@@ -1,4 +1,4 @@
-# Does Claude find the right skill? What my evals showed
+# Does Claude find the right skill? What evals showed
 
 When using skills in Claude Code, I was concerned about the following things:
 
@@ -67,6 +67,8 @@ Haiku and Sonnet ran everything. Opus ran ten tasks from each suite, because it 
 
 Before each comparison I wrote down a pass rule. Here it was a gap of 15 percentage points, with one setup ahead in clearly more tasks than the other. "Not shown" below means the rule was not met.
 
+Each benchmark task ran once and each local-rules task twice, and two runs of the same setup differed by 2 to 5 tasks, so small gaps mean little. An answer can also cite a rule's ID without applying the rule.
+
 ## The instruction does the work
 
 With no instruction Claude almost never found the skill. With the instruction it found most of them. That met the pass rule on both suites, for each of the three models.
@@ -95,14 +97,37 @@ With no instruction Claude followed no chained rule, because it never opened the
 
 A second lookup does not always find the skill. Haiku looked up again most often and followed the fewest chained rules. Every run also had the look-again paragraph, so this does not show that the look-again paragraph is the cause.
 
-I also ran a separate small test of Claude Code with no instruction and no finder. The skill was installed among 20 skills, and the need for it showed up only during the work. Whether Claude used it depended on the skill's description:
+## What the description changes
 
-| Description says | Haiku | Sonnet |
-|---|---|---|
-| "Use ALWAYS, every time, when ..." | 19 of 47 | 14 of 15 |
-| "Rules for X." | 0 of 23 | 3 of 13 |
+This is a separate small test of plain Claude Code, with no instruction and no finder. Eight made-up skills sat in a list of 20. Each had an obvious trigger, for example a colour being mentioned. I changed only the wording of the description.
 
-With 200 skills in the list and the first description, Haiku used the skill in 1 of 24 runs, against 8 of 24 for the same tasks with 20 skills.
+![On Sonnet with no instruction, a skill whose need was named in the request was used 8 of 8 times with every description. When the need appeared only mid-task it was used in 14 of 15 runs with a description saying Use ALWAYS, 7 of 15 with Use when, and 3 of 13 with a neutral Rules for X. On Haiku mid-task: 8 of 24 with ALWAYS, 0 of 23 neutral, and 1 of 24 with ALWAYS among 200 listed skills.](figures/always.svg)
+
+When the request itself named the trigger, Sonnet used the skill in 8 of 8 runs with every wording. When the trigger showed up only during the work, the wording decided: 14 of 15 with "Use ALWAYS, every time, when ...", 7 of 15 with "Use when ...", and 3 of 13 with "Rules for X."
+
+Haiku was weaker mid-task with any wording: 8 of 24 with ALWAYS, 0 of 23 with "Rules for X.", and 1 of 24 when the list grew to 200 skills. Over all its mid-task runs with ALWAYS it used the skill in 19 of 47.
+
+So a description that insists works for Sonnet with a short list. You can only write it that way for skills that are yours.
+
+## References, and descriptions that say too little
+
+Two of the questions at the top I tested only earlier: on Sonnet and Haiku, with an older wording of the instruction and 20 made-up skills. There were three setups: no instruction ("plain"), an instruction to check the skills with no command ("told"), and the same instruction with the finder. I have not rerun these with the current instruction.
+
+### Does Claude read a skill's reference files?
+
+It depends on how `SKILL.md` points to the file.
+
+![On Sonnet, a rule in a reference file was followed in 9, 12 and 12 of 12 cases (no instruction, told to check the skills, with the finder) when SKILL.md names the file with a condition; in 0, 10 and 17 of 18 when SKILL.md only says more files exist; and in 0, 4 and 18 of 18 when SKILL.md does not mention the file.](figures/refs.svg)
+
+When `SKILL.md` names the file and says when to read it, Claude reads it, even with no instruction. When `SKILL.md` only says that more files exist, or says nothing, plain Claude stops at `SKILL.md`: 0 of 18 both times. Told to check the skills, it read a file that nothing mentions in 4 of 18 cases. The finder lists the files that hold the searched words, and reached 18 of 18. Haiku gave the same picture (0, 6 and 15 of 18 for a file that is not mentioned).
+
+### What if the description does not cover what the skill holds?
+
+In 16 cases the rule sat in a skill about another topic. Neither the skill's name nor its description pointed to it; only the rule's own words matched the task.
+
+![When a rule sits in a skill whose name and description are about another topic, it was followed in 0 of 16 cases with no instruction, 0 of 16 when told to check the skills and 16 of 16 with the finder on Sonnet; 0, 2 and 15 of 16 on Haiku. In a harder rerun on Sonnet with long skills: 0 of 20 told, 20 of 20 with the finder, 15 of 20 when the reference files had plain names.](figures/unnamed.svg)
+
+Judging by descriptions never reached these rules: no skill was opened. A search by the rule's words did. A harder rerun on Sonnet, with long skills, gave 0 of 20 for the told setup and 20 of 20 for the finder, or 15 of 20 when the reference files had names that say nothing. I did not run grep in these tests.
 
 ## Finder or grep
 

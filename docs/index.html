@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Does Claude find the right skill? What my evals showed</title>
+<title>Does Claude find the right skill? What evals showed</title>
 <meta name="description" content="What evals showed about helping Claude Code find the right skill among hundreds, and what did not matter.">
 <style>
 :root{--bg:#ffffff;--text:#161920;--dim:#5f6675;--line:#e2e5ec;--accent:#2f5fd0;--soft:#f4f6fa;--code:#f1f3f8}
@@ -34,8 +34,8 @@ footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);color:v
 </head>
 <body>
 <main>
-<h1 id="does-claude-find-the-right-skill-what-my-evals-showed">Does
-Claude find the right skill? What my evals showed</h1>
+<h1 id="does-claude-find-the-right-skill-what-evals-showed">Does Claude
+find the right skill? What evals showed</h1>
 <p>When using skills in Claude Code, I was concerned about the following
 things:</p>
 <ul>
@@ -123,6 +123,10 @@ because it costs more.</p>
 <p>Before each comparison I wrote down a pass rule. Here it was a gap of
 15 percentage points, with one setup ahead in clearly more tasks than
 the other. "Not shown" below means the rule was not met.</p>
+<p>Each benchmark task ran once and each local-rules task twice, and two
+runs of the same setup differed by 2 to 5 tasks, so small gaps mean
+little. An answer can also cite a rule's ID without applying the
+rule.</p>
 <h2 id="the-instruction-does-the-work">The instruction does the
 work</h2>
 <p>With no instruction Claude almost never found the skill. With the
@@ -160,34 +164,55 @@ of 48 runs on Haiku, 35 of 48 on Sonnet and 8 of 10 on Opus.</p>
 most often and followed the fewest chained rules. Every run also had the
 look-again paragraph, so this does not show that the look-again
 paragraph is the cause.</p>
-<p>I also ran a separate small test of Claude Code with no instruction
-and no finder. The skill was installed among 20 skills, and the need for
-it showed up only during the work. Whether Claude used it depended on
-the skill's description:</p>
-<table>
-<thead>
-<tr>
-<th>Description says</th>
-<th>Haiku</th>
-<th>Sonnet</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>"Use ALWAYS, every time, when ..."</td>
-<td>19 of 47</td>
-<td>14 of 15</td>
-</tr>
-<tr>
-<td>"Rules for X."</td>
-<td>0 of 23</td>
-<td>3 of 13</td>
-</tr>
-</tbody>
-</table>
-<p>With 200 skills in the list and the first description, Haiku used the
-skill in 1 of 24 runs, against 8 of 24 for the same tasks with 20
-skills.</p>
+<h2 id="what-the-description-changes">What the description changes</h2>
+<p>This is a separate small test of plain Claude Code, with no
+instruction and no finder. Eight made-up skills sat in a list of 20.
+Each had an obvious trigger, for example a colour being mentioned. I
+changed only the wording of the description.</p>
+<p><img src="figures/always.svg"
+alt="On Sonnet with no instruction, a skill whose need was named in the request was used 8 of 8 times with every description. When the need appeared only mid-task it was used in 14 of 15 runs with a description saying Use ALWAYS, 7 of 15 with Use when, and 3 of 13 with a neutral Rules for X. On Haiku mid-task: 8 of 24 with ALWAYS, 0 of 23 neutral, and 1 of 24 with ALWAYS among 200 listed skills." /></p>
+<p>When the request itself named the trigger, Sonnet used the skill in 8
+of 8 runs with every wording. When the trigger showed up only during the
+work, the wording decided: 14 of 15 with "Use ALWAYS, every time, when
+...", 7 of 15 with "Use when ...", and 3 of 13 with "Rules for X."</p>
+<p>Haiku was weaker mid-task with any wording: 8 of 24 with ALWAYS, 0 of
+23 with "Rules for X.", and 1 of 24 when the list grew to 200 skills.
+Over all its mid-task runs with ALWAYS it used the skill in 19 of
+47.</p>
+<p>So a description that insists works for Sonnet with a short list. You
+can only write it that way for skills that are yours.</p>
+<h2 id="references-and-descriptions-that-say-too-little">References, and
+descriptions that say too little</h2>
+<p>Two of the questions at the top I tested only earlier: on Sonnet and
+Haiku, with an older wording of the instruction and 20 made-up skills.
+There were three setups: no instruction ("plain"), an instruction to
+check the skills with no command ("told"), and the same instruction with
+the finder. I have not rerun these with the current instruction.</p>
+<h3 id="does-claude-read-a-skills-reference-files">Does Claude read a
+skill's reference files?</h3>
+<p>It depends on how <code>SKILL.md</code> points to the file.</p>
+<p><img src="figures/refs.svg"
+alt="On Sonnet, a rule in a reference file was followed in 9, 12 and 12 of 12 cases (no instruction, told to check the skills, with the finder) when SKILL.md names the file with a condition; in 0, 10 and 17 of 18 when SKILL.md only says more files exist; and in 0, 4 and 18 of 18 when SKILL.md does not mention the file." /></p>
+<p>When <code>SKILL.md</code> names the file and says when to read it,
+Claude reads it, even with no instruction. When <code>SKILL.md</code>
+only says that more files exist, or says nothing, plain Claude stops at
+<code>SKILL.md</code>: 0 of 18 both times. Told to check the skills, it
+read a file that nothing mentions in 4 of 18 cases. The finder lists the
+files that hold the searched words, and reached 18 of 18. Haiku gave the
+same picture (0, 6 and 15 of 18 for a file that is not mentioned).</p>
+<h3
+id="what-if-the-description-does-not-cover-what-the-skill-holds">What if
+the description does not cover what the skill holds?</h3>
+<p>In 16 cases the rule sat in a skill about another topic. Neither the
+skill's name nor its description pointed to it; only the rule's own
+words matched the task.</p>
+<p><img src="figures/unnamed.svg"
+alt="When a rule sits in a skill whose name and description are about another topic, it was followed in 0 of 16 cases with no instruction, 0 of 16 when told to check the skills and 16 of 16 with the finder on Sonnet; 0, 2 and 15 of 16 on Haiku. In a harder rerun on Sonnet with long skills: 0 of 20 told, 20 of 20 with the finder, 15 of 20 when the reference files had plain names." /></p>
+<p>Judging by descriptions never reached these rules: no skill was
+opened. A search by the rule's words did. A harder rerun on Sonnet, with
+long skills, gave 0 of 20 for the told setup and 20 of 20 for the
+finder, or 15 of 20 when the reference files had names that say nothing.
+I did not run grep in these tests.</p>
 <h2 id="finder-or-grep">Finder or grep</h2>
 <p>I ran the same instruction with <code>grep</code> in place of the
 finder.</p>
@@ -205,7 +230,7 @@ nothing. Haiku never called it.</p>
 <h2 id="what-to-do">What to do</h2>
 <p>Add the instruction. If you would rather install nothing, use the
 grep version.</p>
-<footer>Written by <a href="https://github.com/ydmitry">Dmytro Yaremenko</a>. Part of <a href="https://github.com/ydmitry/skill-finder">skill-finder</a>. Source: <a href="article.md">article.md</a>.</footer>
+<footer>Written by <a href="https://github.com/ydmitry">Dmytro Yaremenko</a>, drafted with Claude from my own tests. Part of <a href="https://github.com/ydmitry/skill-finder">skill-finder</a>. Source: <a href="article.md">article.md</a>.</footer>
 </main>
 <script>
 document.querySelectorAll("pre").forEach(function(pre){
